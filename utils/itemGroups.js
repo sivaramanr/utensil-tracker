@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const ITEM_GROUPS_TABLE = 'ItemGroups';
@@ -117,9 +117,7 @@ async function fetchItemGroupsFromApi() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Item Groups API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Item Groups API');
 
   const payload = await response.json();
   return normalizeApiItemGroups(payload);

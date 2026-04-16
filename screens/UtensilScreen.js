@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
-  loadUtensilMovementSummaryWithInitialSync,
-  setUtensilMovementQuantity,
+    loadUtensilMovementSummaryWithInitialSync,
+    setUtensilMovementQuantity,
 } from '../utils/utensilMovements';
 import { loadUtensilTypesByItemGroupWithInitialSync } from '../utils/utensilTypes';
 import { loadUtensilsByTypeIdsWithInitialSync } from '../utils/utensils';
@@ -12,6 +12,7 @@ export default function UtensilScreen({ route, navigation }) {
   const itemName = route?.params?.itemName ?? 'Item';
   const itemGroupId = route?.params?.itemGroupId;
   const itemId = route?.params?.itemId;
+  const itemDespatchItemId = route?.params?.itemDespatchItemId;
   const sessionId = route?.params?.sessionId;
   const customerId = route?.params?.customerId;
   const selectedDate = route?.params?.selectedDate;
@@ -91,12 +92,13 @@ export default function UtensilScreen({ route, navigation }) {
         };
         await setUtensilMovementQuantity(context, utensilId, nextCount, {
           itemId,
+          despatchItemId: itemDespatchItemId,
         });
       } catch (error) {
         console.log('Save utensil movement quantity error:', error);
       }
     },
-    [countsByUtensilId, customerId, itemId, selectedDate, sessionId, tripNo]
+    [countsByUtensilId, customerId, itemDespatchItemId, itemId, selectedDate, sessionId, tripNo]
   );
 
   const renderUtensilItem = ({ item }) => {
@@ -143,29 +145,6 @@ export default function UtensilScreen({ route, navigation }) {
         />
       )}
 
-      <View style={styles.summaryCard}>
-        <Pressable
-          style={[styles.summaryBlock, styles.summaryBlockLeft]}
-          onPress={() =>
-            navigation.navigate('DespatchedUtensils', {
-              selectedDate,
-              sessionId,
-              customerId,
-              sessionName,
-              customerName,
-              tripNo,
-            })
-          }
-        >
-          <Text style={styles.summaryLabel}>Despatched Utensil</Text>
-          <Text style={styles.summaryValue}>{dispatchedTotal}</Text>
-        </Pressable>
-        <View style={styles.summaryDivider} />
-        <View style={[styles.summaryBlock, styles.summaryBlockRight]}>
-          <Text style={styles.summaryLabel}>Retruned Utensil</Text>
-          <Text style={styles.summaryValue}>0</Text>
-        </View>
-      </View>
     </View>
   );
 }

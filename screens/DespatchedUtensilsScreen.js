@@ -1,14 +1,17 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
   getUtensilMovementRows,
   loadUtensilMovementSummaryWithInitialSync,
+  refreshUtensilMovementsFromApi,
+  submitCreatedUtensilMovements,
   utensilMovementSyncStatus,
 } from '../utils/utensilMovements';
 import { getUtensilsByIds } from '../utils/utensils';
 
-export default function DespatchedUtensilsScreen({ route }) {
+export default function DespatchedUtensilsScreen({ route, navigation }) {
   const selectedDate = route?.params?.selectedDate;
   const sessionId = route?.params?.sessionId;
   const customerId = route?.params?.customerId;
@@ -22,6 +25,7 @@ export default function DespatchedUtensilsScreen({ route }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -40,8 +44,14 @@ export default function DespatchedUtensilsScreen({ route }) {
       movementRows.forEach((row) => {
         const utensilId = row?.utensilId != null ? String(row.utensilId) : null;
         const despatchedQuantity = Number(row?.despatchedQuantity ?? 0) || 0;
+        const isChanged = row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
 
-        if (!utensilId || despatchedQuantity <= 0) {
+        if (!utensilId) {
+          return;
+        }
+
+        // Skip rows with 0 quantity unless they are Changed items
+        if (despatchedQuantity <= 0 && !isChanged) {
           return;
         }
 
@@ -112,6 +122,48 @@ export default function DespatchedUtensilsScreen({ route }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleSubmit = useCallback(async () => {
+    setSubmitting(true);
+
+    try {
+      const context = {
+        orderDate: selectedDate,
+        sessionId,
+        customerId,
+        tripNo,
+      };
+      const result = await submitCreatedUtensilMovements(context);
+
+      if (result.submittedCount === 0) {
+        Alert.alert('Submit', 'No utensil movements to submit.');
+        return;
+      }
+
+      await refreshUtensilMovementsFromApi(context);
+      await loadData();
+      const messages = [];
+      if (result.createdCount > 0) messages.push(`${result.createdCount} created`);
+      if (result.changedCount > 0) messages.push(`${result.changedCount} updated`);
+      Alert.alert('Submit', `${messages.join(' and ')} utensil movement(s) submitted successfully.`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            AsyncStorage.setItem('justSubmitted', 'true');
+            navigation.goBack();
+          },
+        },
+      ]);
+    } catch (error) {
+      console.log('Submit despatched utensils error:', error);
+      Alert.alert(
+        'Submit Failed',
+        error?.message || 'Unable to submit utensil movements. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }, [customerId, loadData, selectedDate, sessionId, tripNo]);
 
   const renderItem = ({ item }) => {
     const isLocalOnly = item.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY;
@@ -194,8 +246,8 @@ export default function DespatchedUtensilsScreen({ route }) {
       )}
 
       {!loading && (
-        <Pressable style={styles.submitButton} onPress={() => console.log('Submit despatched utensils')}>
-          <Text style={styles.submitButtonText}>Submit</Text>
+        <Pressable style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
+          <Text style={styles.submitButtonText}>{submitting ? 'Submitting...' : 'Submit'}</Text>
         </Pressable>
       )}
     </View>

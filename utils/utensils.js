@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const UTENSILS_TABLE = 'Utensils';
@@ -38,6 +38,7 @@ export async function ensureUtensilsTable() {
 }
 
 export async function getUtensilsByType(utensilTypeId) {
+  await ensureUtensilsTable();
   const db = await getDatabase();
   const rows = await db.getAllAsync(
     `SELECT id, name, utensilTypeId, utensilTypeName, isActive, "order"
@@ -62,6 +63,7 @@ export async function getUtensilsByTypeIds(utensilTypeIds) {
     return [];
   }
 
+  await ensureUtensilsTable();
   const db = await getDatabase();
   const placeholders = utensilTypeIds.map(() => '?').join(', ');
   const rows = await db.getAllAsync(
@@ -89,6 +91,7 @@ export async function getUtensilsByIds(utensilIds) {
     return [];
   }
 
+  await ensureUtensilsTable();
   const db = await getDatabase();
   const placeholders = utensilIds.map(() => '?').join(', ');
   const rows = await db.getAllAsync(
@@ -169,9 +172,7 @@ async function fetchUtensilsFromApi() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Utensils API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Utensils API');
 
   const payload = await response.json();
   console.log('[UTENSILS][API][RAW_RESPONSE]', payload);

@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const SESSIONS_TABLE = 'Sessions';
@@ -95,9 +95,7 @@ async function fetchSessionsFromApi() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Sessions API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Sessions API');
 
   const payload = await response.json();
   console.log('[SESSIONS][API][RAW_RESPONSE]', payload);

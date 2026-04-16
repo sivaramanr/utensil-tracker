@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const CUSTOMERS_TABLE = 'Customers';
@@ -404,9 +404,7 @@ async function fetchCustomersFromApi() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Customers API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Customers API');
 
   const payload = await response.json();
   console.log('[CUSTOMERS][API][RAW_RESPONSE]', payload);
@@ -444,9 +442,7 @@ async function fetchSessionDataFromApi({ orderDate, sessionId }) {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Session data API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Session data API');
 
   const payload = await response.json();
   const customers = normalizeSessionDataCustomers(payload);
@@ -754,6 +750,7 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     `
       SELECT
         i.itemId,
+        i.menuPlanItemId,
         i.code,
         i.name,
         i.quantity,
@@ -788,6 +785,7 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     if (!existingItem) {
       itemsById.set(itemId, {
         id: itemId,
+        despatchItemId: row.menuPlanItemId != null ? String(row.menuPlanItemId) : null,
         code: row.code,
         name: row.name,
         quantity: Number(row.quantity ?? 0),
@@ -800,6 +798,10 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     }
 
     existingItem.quantity += Number(row.quantity ?? 0);
+
+    if (!existingItem.despatchItemId && row.menuPlanItemId != null) {
+      existingItem.despatchItemId = String(row.menuPlanItemId);
+    }
 
     if (comboLabel && !existingItem.comboNames.includes(comboLabel)) {
       existingItem.comboNames.push(comboLabel);

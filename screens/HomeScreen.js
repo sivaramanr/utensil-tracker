@@ -102,8 +102,7 @@ export default function HomeScreen({ navigation }) {
   }, [dangerColor, navigation]);
 
   const handleDatePress = (day) => {
-    const selectedDate = new Date(year, month, day);
-    const formattedDate = selectedDate.toISOString().slice(0, 10);
+    const formattedDate = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 
     navigation.navigate('Session', { selectedDate: formattedDate });
   };

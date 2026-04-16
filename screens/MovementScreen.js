@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +15,7 @@ import {
 import { getSessionCustomerItems } from '../utils/customers';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
+  clearContextMovements,
   getUtensilMovementRows,
   loadUtensilMovementSummaryWithInitialSync as loadMovementSummary,
   loadUtensilMovementSummaryWithInitialSync,
@@ -186,12 +188,14 @@ export default function MovementScreen({ route, navigation }) {
     setRefreshing(true);
 
     try {
-      await refreshUtensilMovementsFromApi({
+      const context = {
         orderDate: selectedDate,
         sessionId,
         customerId,
         tripNo,
-      });
+      };
+      await clearContextMovements(context);
+      await refreshUtensilMovementsFromApi(context);
       await Promise.all([loadItems(), loadSummary()]);
     } catch (error) {
       console.log('Refresh utensil movement error:', error);
@@ -229,14 +233,20 @@ export default function MovementScreen({ route, navigation }) {
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', async () => {
       try {
-        await Promise.all([loadItems(), loadSummary()]);
+        const justSubmitted = await AsyncStorage.getItem('justSubmitted');
+        if (justSubmitted) {
+          await handleRefresh();
+          await AsyncStorage.removeItem('justSubmitted');
+        } else {
+          await Promise.all([loadItems(), loadSummary()]);
+        }
       } catch (error) {
         console.log('Reload utensil movement summary error:', error);
       }
     });
 
     return unsubscribe;
-  }, [loadItems, loadSummary, navigation]);
+  }, [handleRefresh, loadItems, loadSummary, navigation]);
 
   const renderUtensilTag = useCallback(
     (utensil) => {
@@ -291,6 +301,7 @@ export default function MovementScreen({ route, navigation }) {
       onPress={() =>
         navigation.navigate('Utensil', {
           itemId: item.id,
+          itemDespatchItemId: item.despatchItemId,
           itemName: item.name,
           itemQuantity: item.quantity,
           itemUomName: item.uomName,
@@ -333,7 +344,7 @@ export default function MovementScreen({ route, navigation }) {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={(item, index) => `${item.id}-${item.utensilTags.length}-${index}`}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={<Text style={styles.emptyText}>No items available.</Text>}

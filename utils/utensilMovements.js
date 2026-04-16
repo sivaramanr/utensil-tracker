@@ -1,9 +1,10 @@
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const UTENSIL_MOVEMENTS_TABLE = 'UtensilMovements';
 const UTENSIL_MOVEMENT_SYNC_TABLE = 'UtensilMovementSync';
+const UTENSIL_MOVEMENTS_MUTATION_ENDPOINT = 'https://amrutha.cookerp.com/utensilmovement/bulk';
 const UTENSIL_MOVEMENTS_ENDPOINT = 'https://amrutha.cookerp.com/utensilmovement/customer';
 const SYNC_STATUS_LOCAL_ONLY = 'LOCAL_ONLY';
 const SYNC_STATUS_SERVER_UNCHANGED = 'SERVER_UNCHANGED';
@@ -291,23 +292,21 @@ async function fetchUtensilMovementsFromApi(context) {
     tripNo: String(normalizedContext.tripNo),
   });
 
-  const response = await fetch(
-    `${UTENSIL_MOVEMENTS_ENDPOINT}/${normalizedContext.customerId}?${queryParams.toString()}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        unitId,
-        Accept: 'application/json',
-      },
-    }
-  );
+  const url = `${UTENSIL_MOVEMENTS_ENDPOINT}/${normalizedContext.customerId}?${queryParams.toString()}`;
 
-  if (!response.ok) {
-    throw new Error(`Utensil movement API failed with status ${response.status}`);
-  }
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      unitId,
+      Accept: 'application/json',
+    },
+  });
+
+  await ensureAuthorizedResponse(response, 'Utensil movement API');
 
   const payload = await response.json();
+  console.log('Utensil movements API response:', { url, payload });
   const syncedAt = new Date().toISOString();
   const contextKey = buildContextKey(normalizedContext);
   const normalizedMovements = normalizeApiList(payload)
@@ -633,6 +632,110 @@ export async function getUtensilMovementRows(context) {
   }));
 }
 
+async function getServerIdForMovement(context, utensilId, itemId) {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync(
+    `
+      SELECT id
+      FROM ${UTENSIL_MOVEMENTS_TABLE}
+      WHERE contextKey = ? AND utensilId = ? AND itemId = ? AND isDraft = 0;
+    `,
+    buildContextKey(context),
+    String(utensilId),
+    String(itemId)
+  );
+
+  return row?.id ?? null;
+}
+
+export async function submitCreatedUtensilMovements(context) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const rows = await getUtensilMovementRows(normalizedContext);
+  const createdRows = rows.filter(
+    (row) => row?.syncStatus === SYNC_STATUS_LOCAL_ONLY && Number(row?.despatchedQuantity ?? 0) > 0
+  );
+  const changedRows = rows.filter(
+    (row) => row?.syncStatus === SYNC_STATUS_SERVER_MODIFIED && row?.utensilId && row?.itemId
+  );
+
+  const [accessToken, workInfo] = await Promise.all([getAccessToken(), getWorkInfo()]);
+  const unitId = workInfo?.companyId;
+
+  if (!accessToken || !unitId) {
+    throw new Error('Missing access token or unitId.');
+  }
+
+  let createdSubmittedCount = 0;
+  let createdPayload = [];
+  if (createdRows.length > 0) {
+    const invalidRow = createdRows.find((row) => !row?.despatchItemId || !row?.utensilId);
+
+    if (invalidRow) {
+      throw new Error('Missing despatchItemId or utensilId for created utensil movement.');
+    }
+
+    createdPayload = createdRows.map((row) => ({
+      menuPlanItemId: String(row.despatchItemId),
+      utensilId: String(row.utensilId),
+      despatchedQuantity: Number(row.despatchedQuantity ?? 0) || 0,
+    }));
+
+    const response = await fetch(UTENSIL_MOVEMENTS_MUTATION_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        unitId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(createdPayload),
+    });
+
+    await ensureAuthorizedResponse(response, 'Create utensil movement API');
+    createdSubmittedCount = createdPayload.length;
+  }
+
+  let changedSubmittedCount = 0;
+  let changedPayload = [];
+  if (changedRows.length > 0) {
+    changedPayload = await Promise.all(changedRows.map(async (row) => {
+      const serverId = await getServerIdForMovement(normalizedContext, row.utensilId, row.itemId);
+
+      if (!serverId) {
+        throw new Error(`Server id not found for utensil ${row.utensilId} and item ${row.itemId}`);
+      }
+
+      return {
+        id: String(serverId),
+        despatchedQuantity: Number(row.despatchedQuantity ?? 0) || 0,
+      };
+    }));
+
+    const response = await fetch(UTENSIL_MOVEMENTS_MUTATION_ENDPOINT, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        unitId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(changedPayload),
+    });
+
+    await ensureAuthorizedResponse(response, 'Update utensil movement API');
+    changedSubmittedCount = changedPayload.length;
+  }
+
+  return {
+    submittedCount: createdSubmittedCount + changedSubmittedCount,
+    createdCount: createdSubmittedCount,
+    changedCount: changedSubmittedCount,
+    payload: createdPayload,
+    changedPayload,
+  };
+}
+
 export async function loadUtensilMovementCountsWithInitialSync(context) {
   const result = await loadUtensilMovementSummaryWithInitialSync(context);
   return result.countsByUtensilId;
@@ -750,6 +853,31 @@ export async function setUtensilMovementQuantity(context, utensilId, quantity, m
     despatchItemId: normalizedDespatchItemId,
     quantity: nextQuantity,
     syncStatus,
+  });
+}
+
+export async function clearContextMovements(context) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const contextKey = buildContextKey(normalizedContext);
+  const db = await getDatabase();
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `
+        DELETE FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey = ?;
+      `,
+      contextKey
+    );
+
+    await db.runAsync(
+      `
+        DELETE FROM ${UTENSIL_MOVEMENT_SYNC_TABLE}
+        WHERE contextKey = ?;
+      `,
+      contextKey
+    );
   });
 }
 

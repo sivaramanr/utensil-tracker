@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { getAccessToken, getWorkInfo } from './auth';
+import { ensureAuthorizedResponse, getAccessToken, getWorkInfo } from './auth';
 
 const DATABASE_NAME = 'utensil_tracker.db';
 const UTENSIL_TYPES_TABLE = 'UtensilTypes';
@@ -198,9 +198,7 @@ async function fetchUtensilTypeItemGroupsFromApi(accessToken, unitId) {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Utensil Type Item Group API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Utensil Type Item Group API');
 
   const payload = await response.json();
   return normalizeUtensilTypeItemGroups(payload);
@@ -229,9 +227,7 @@ async function fetchUtensilTypesFromApi() {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Utensil Types API failed with status ${response.status}`);
-  }
+  await ensureAuthorizedResponse(response, 'Utensil Types API');
 
   const payload = await response.json();
   const [normalizedUtensilTypes, normalizedItemGroups] = await Promise.all([
