@@ -125,9 +125,13 @@ async function getContextRows(context) {
         despatchedQuantity,
         returnedQuantity,
         isDraft,
-        syncStatus
+        syncStatus,
+        despatchApproved,
+        returnApproved,
+        despatchApprovedBy,
+        returnApprovedBy
       FROM ${UTENSIL_MOVEMENTS_TABLE}
-      WHERE contextKey = ?;
+      WHERE contextKey = ?
     `,
     buildContextKey(context)
   );
@@ -159,6 +163,10 @@ function buildEffectiveMovementRows(rows) {
         returnedQuantity,
         isDraft: true,
         syncStatus: row?.syncStatus ?? SYNC_STATUS_LOCAL_ONLY,
+        despatchApproved: Boolean(row?.despatchApproved),
+        returnApproved: Boolean(row?.returnApproved),
+        despatchApprovedBy: row?.despatchApprovedBy ?? null,
+        returnApprovedBy: row?.returnApprovedBy ?? null,
       });
       return;
     }
@@ -174,13 +182,21 @@ function buildEffectiveMovementRows(rows) {
         despatchedQuantity,
         returnedQuantity,
         isDraft: false,
-        syncStatus: SYNC_STATUS_SERVER_UNCHANGED,
+        syncStatus: row?.syncStatus ?? SYNC_STATUS_SERVER_UNCHANGED,
+        despatchApproved: Boolean(row?.despatchApproved),
+        returnApproved: Boolean(row?.returnApproved),
+        despatchApprovedBy: row?.despatchApprovedBy ?? null,
+        returnApprovedBy: row?.returnApprovedBy ?? null,
       });
       return;
     }
 
     existingServerRow.despatchedQuantity += despatchedQuantity;
     existingServerRow.returnedQuantity += returnedQuantity;
+    // If any row is approved, mark as approved
+    if (row?.despatchApproved) {
+      existingServerRow.despatchApproved = true;
+    }
   });
 
   return Array.from(new Set([...serverRowsByKey.keys(), ...draftRowsByKey.keys()])).map(
@@ -595,10 +611,6 @@ export async function ensureUtensilMovementTables() {
           ON ${UTENSIL_MOVEMENTS_TABLE} (contextKey, utensilId);
         `
       );
-
-      try {
-        await db.runAsync(`ALTER TABLE ${UTENSIL_MOVEMENTS_TABLE} ADD COLUMN itemId TEXT;`);
-      } catch {}
     })().catch((error) => {
       ensureUtensilMovementTablesPromise = null;
       throw error;
@@ -629,6 +641,10 @@ export async function getUtensilMovementRows(context) {
     returnedQuantity: Number(row?.returnedQuantity ?? 0) || 0,
     isDraft: Boolean(row?.isDraft),
     syncStatus: row?.syncStatus ?? null,
+    despatchApproved: Boolean(row?.despatchApproved),
+    returnApproved: Boolean(row?.returnApproved),
+    despatchApprovedBy: row?.despatchApprovedBy ?? null,
+    returnApprovedBy: row?.returnApprovedBy ?? null,
   }));
 }
 
@@ -886,3 +902,371 @@ export const utensilMovementSyncStatus = {
   SERVER_UNCHANGED: SYNC_STATUS_SERVER_UNCHANGED,
   SERVER_MODIFIED: SYNC_STATUS_SERVER_MODIFIED,
 };
+
+export async function getDashboardSummary() {
+  await ensureUtensilMovementTables();
+  const db = await getDatabase();
+
+  // Get all synced movements (not drafts)
+  const allMovements = await db.getAllAsync(
+    `SELECT despatchedQuantity, returnedQuantity FROM ${UTENSIL_MOVEMENTS_TABLE} WHERE isDraft = 0;`
+  );
+
+  let despatchedTotal = 0;
+  let returnedTotal = 0;
+  let pendingTotal = 0;
+
+  allMovements.forEach((row) => {
+    const despatched = Number(row?.despatchedQuantity ?? 0) || 0;
+    const returned = Number(row?.returnedQuantity ?? 0) || 0;
+    
+    despatchedTotal += despatched;
+    returnedTotal += returned;
+    pendingTotal += Math.max(0, despatched - returned);
+  });
+
+  return {
+    despatched: despatchedTotal,
+    returned: returnedTotal,
+    pending: pendingTotal,
+  };
+}
+
+export async function approveDespatchedUtensilMovements(context, selectedUtensilIds = null) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const rows = await getUtensilMovementRows(normalizedContext);
+  
+  // Get only items that are in Submitted status (SERVER_UNCHANGED)
+  let submittedRows = rows.filter(
+    (row) =>
+      row?.syncStatus === SYNC_STATUS_SERVER_UNCHANGED &&
+      Number(row?.despatchedQuantity ?? 0) > 0 &&
+      row?.utensilId &&
+      row?.itemId
+  );
+
+  // If selectedUtensilIds is provided, filter to only those items
+  if (selectedUtensilIds && selectedUtensilIds.length > 0) {
+    const selectedSet = new Set(selectedUtensilIds.map(String));
+    submittedRows = submittedRows.filter((row) => selectedSet.has(String(row?.utensilId)));
+  }
+
+  if (submittedRows.length === 0) {
+    return { approvedCount: 0 };
+  }
+
+  const [accessToken, workInfo] = await Promise.all([getAccessToken(), getWorkInfo()]);
+  const unitId = workInfo?.companyId;
+
+  if (!accessToken || !unitId) {
+    throw new Error('Missing access token or unitId.');
+  }
+
+  // Build payload for approval - each item gets despatchApproved: true
+  const approvePayload = await Promise.all(
+    submittedRows.map(async (row) => {
+      const serverId = await getServerIdForMovement(normalizedContext, row.utensilId, row.itemId);
+
+      if (!serverId) {
+        throw new Error(`Server id not found for utensil ${row.utensilId} and item ${row.itemId}`);
+      }
+
+      return {
+        id: String(serverId),
+        despatchApproved: true,
+      };
+    })
+  );
+
+  // Make PUT request with despatchApproved: true for each item
+  const response = await fetch(UTENSIL_MOVEMENTS_MUTATION_ENDPOINT, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      unitId,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(approvePayload),
+  });
+
+  await ensureAuthorizedResponse(response, 'Approve utensil movement API');
+
+  // Update local cache to mark items as approved
+  const db = await getDatabase();
+  const updatePromises = approvePayload.map((item) =>
+    db.runAsync(
+      `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET despatchApproved = 1 WHERE id = ?`,
+      [item.id]
+    )
+  );
+
+  await Promise.all(updatePromises);
+
+  return {
+    approvedCount: approvePayload.length,
+    payload: approvePayload,
+  };
+}
+
+export async function submitReturnedUtensilMovements(context) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const rows = await getUtensilMovementRows(normalizedContext);
+  
+  console.log('[submitReturnedUtensilMovements] All rows from database:', rows);
+  
+  const createdRows = rows.filter(
+    (row) => row?.syncStatus === SYNC_STATUS_LOCAL_ONLY && Number(row?.returnedQuantity ?? 0) > 0
+  );
+  const changedRows = rows.filter(
+    (row) => row?.syncStatus === SYNC_STATUS_SERVER_MODIFIED && row?.utensilId && row?.itemId
+  );
+
+  console.log('[submitReturnedUtensilMovements] Filtered rows:', {
+    createdCount: createdRows.length,
+    changedCount: changedRows.length,
+    createdRows,
+    changedRows
+  });
+
+  const [accessToken, workInfo] = await Promise.all([getAccessToken(), getWorkInfo()]);
+  const unitId = workInfo?.companyId;
+
+  if (!accessToken || !unitId) {
+    throw new Error('Missing access token or unitId.');
+  }
+
+  let createdSubmittedCount = 0;
+  let changedSubmittedCount = 0;
+  let createdPayload = [];
+  if (createdRows.length > 0) {
+    const invalidRow = createdRows.find((row) => !row?.despatchItemId || !row?.utensilId);
+
+    if (invalidRow) {
+      throw new Error('Missing despatchItemId or utensilId for created utensil movement.');
+    }
+
+    createdPayload = createdRows.map((row) => ({
+      menuPlanItemId: String(row.despatchItemId),
+      utensilId: String(row.utensilId),
+      returnedQuantity: Number(row.returnedQuantity ?? 0),
+      isDraft: false,
+    }));
+    createdSubmittedCount = createdPayload.length;
+  }
+
+  let changedPayload = [];
+  if (changedRows.length > 0) {
+    changedPayload = await Promise.all(
+      changedRows.map(async (row) => {
+        const serverId = await getServerIdForMovement(normalizedContext, row.utensilId, row.itemId);
+
+        if (!serverId) {
+          throw new Error(`Server id not found for utensil ${row.utensilId} and item ${row.itemId}`);
+        }
+
+        return {
+          id: String(serverId),
+          returnedQuantity: Number(row.returnedQuantity ?? 0),
+        };
+      })
+    );
+    changedSubmittedCount = changedPayload.length;
+  }
+
+  const payloads = [...createdPayload, ...changedPayload];
+
+  if (payloads.length > 0) {
+    const response = await fetch(UTENSIL_MOVEMENTS_MUTATION_ENDPOINT, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        unitId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payloads),
+    });
+
+    await ensureAuthorizedResponse(response, 'Submit returned utensil movement API');
+  }
+
+  const db = await getDatabase();
+  if (createdRows.length > 0) {
+    const createUpdatePromises = createdRows.map((row) =>
+      db.runAsync(
+        `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET isDraft = 0, syncStatus = ? WHERE id = ?`,
+        [SYNC_STATUS_SERVER_UNCHANGED, row.id]
+      )
+    );
+    await Promise.all(createUpdatePromises);
+  }
+
+  if (changedRows.length > 0) {
+    const changeUpdatePromises = changedRows.map((row) =>
+      db.runAsync(
+        `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET syncStatus = ? WHERE id = ?`,
+        [SYNC_STATUS_SERVER_UNCHANGED, row.id]
+      )
+    );
+    await Promise.all(changeUpdatePromises);
+  }
+
+  return {
+    createdCount: createdSubmittedCount,
+    changedCount: changedSubmittedCount,
+    payload: payloads,
+  };
+}
+
+export async function approveReturnedUtensilMovements(context, selectedUtensilIds = null) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const rows = await getUtensilMovementRows(normalizedContext);
+
+  // Get only items with returnedQuantity that are in Submitted status (SERVER_UNCHANGED)
+  let submittedRows = rows.filter(
+    (row) =>
+      row?.syncStatus === SYNC_STATUS_SERVER_UNCHANGED &&
+      (Number(row?.returnedQuantity ?? 0) > 0 || row?.returnedQuantity != null) &&
+      row?.utensilId &&
+      row?.itemId
+  );
+
+  // If selectedUtensilIds is provided, filter to only those items
+  if (selectedUtensilIds && selectedUtensilIds.length > 0) {
+    const selectedSet = new Set(selectedUtensilIds.map(String));
+    submittedRows = submittedRows.filter((row) => selectedSet.has(String(row?.utensilId)));
+  }
+
+  if (submittedRows.length === 0) {
+    return { approvedCount: 0 };
+  }
+
+  const [accessToken, workInfo] = await Promise.all([getAccessToken(), getWorkInfo()]);
+  const unitId = workInfo?.companyId;
+
+  if (!accessToken || !unitId) {
+    throw new Error('Missing access token or unitId.');
+  }
+
+  // Build payload for approval - each item gets returnApproved: true
+  const approvePayload = await Promise.all(
+    submittedRows.map(async (row) => {
+      const serverId = await getServerIdForMovement(normalizedContext, row.utensilId, row.itemId);
+
+      if (!serverId) {
+        throw new Error(`Server id not found for utensil ${row.utensilId} and item ${row.itemId}`);
+      }
+
+      return {
+        id: String(serverId),
+        returnApproved: true,
+      };
+    })
+  );
+
+  // Make PUT request with returnApproved: true for each item
+  const response = await fetch(UTENSIL_MOVEMENTS_MUTATION_ENDPOINT, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      unitId,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(approvePayload),
+  });
+
+  await ensureAuthorizedResponse(response, 'Approve returned utensil movement API');
+
+  // Update local cache to mark items as approved
+  const db = await getDatabase();
+  const updatePromises = approvePayload.map((item) =>
+    db.runAsync(
+      `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET returnApproved = 1 WHERE id = ?`,
+      [item.id]
+    )
+  );
+
+  await Promise.all(updatePromises);
+
+  return {
+    approvedCount: approvePayload.length,
+    payload: approvePayload,
+  };
+}
+
+export async function updateReturnedQuantity(context, utensilId, itemId, newQuantity) {
+  await ensureUtensilMovementTables();
+  const normalizedContext = normalizeMovementContext(context);
+  const db = await getDatabase();
+
+  console.log('[updateReturnedQuantity] Input:', { utensilId, itemId, newQuantity });
+
+  const existingRow = await db.getFirstAsync(
+    `
+      SELECT id, returnedQuantity, syncStatus
+      FROM ${UTENSIL_MOVEMENTS_TABLE}
+      WHERE contextKey = ? AND utensilId = ? AND (itemId = ? OR despatchItemId = ?);
+    `,
+    buildContextKey(normalizedContext),
+    String(utensilId),
+    String(itemId),
+    String(itemId)
+  );
+
+  console.log('[updateReturnedQuantity] Found existing row:', existingRow);
+
+  if (!existingRow) {
+    // Create new row if it doesn't exist
+    const serverId = generateId();
+    console.log('[updateReturnedQuantity] Creating new LOCAL_ONLY row:', { serverId, utensilId, itemId, newQuantity });
+    
+    await db.runAsync(
+      `
+        INSERT INTO ${UTENSIL_MOVEMENTS_TABLE}
+        (id, contextKey, orderDate, sessionId, customerId, tripNo, utensilId, itemId, returnedQuantity, isDraft, syncStatus)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `,
+      [
+        serverId,
+        buildContextKey(normalizedContext),
+        normalizedContext.orderDate,
+        normalizedContext.sessionId,
+        normalizedContext.customerId,
+        normalizedContext.tripNo,
+        String(utensilId),
+        String(itemId),
+        newQuantity,
+        0, // isDraft = 0 (not a draft, it's a real return entry)
+        SYNC_STATUS_LOCAL_ONLY,
+      ]
+    );
+    return;
+  }
+
+  // Determine new sync status
+  const currentQuantity = Number(existingRow.returnedQuantity ?? 0);
+  const isQuantityChanged = currentQuantity !== newQuantity;
+
+  let newSyncStatus = existingRow.syncStatus;
+  if (isQuantityChanged && existingRow.syncStatus === SYNC_STATUS_SERVER_UNCHANGED) {
+    newSyncStatus = SYNC_STATUS_SERVER_MODIFIED;
+  }
+
+  console.log('[updateReturnedQuantity] Updating existing row:', { 
+    rowId: existingRow.id,
+    oldQuantity: currentQuantity,
+    newQuantity,
+    oldSyncStatus: existingRow.syncStatus,
+    newSyncStatus 
+  });
+
+  await db.runAsync(
+    `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET returnedQuantity = ?, syncStatus = ? WHERE id = ?`,
+    [newQuantity, newSyncStatus, existingRow.id]
+  );
+}

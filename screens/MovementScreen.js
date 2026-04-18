@@ -18,9 +18,8 @@ import {
   clearContextMovements,
   getUtensilMovementRows,
   loadUtensilMovementSummaryWithInitialSync as loadMovementSummary,
-  loadUtensilMovementSummaryWithInitialSync,
   refreshUtensilMovementsFromApi,
-  utensilMovementSyncStatus,
+  utensilMovementSyncStatus
 } from '../utils/utensilMovements';
 import { getUtensilsByIds } from '../utils/utensils';
 
@@ -32,14 +31,35 @@ export default function MovementScreen({ route, navigation }) {
   const [returnedTotal, setReturnedTotal] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
   const customerName = route?.params?.customerName;
+  const customerCode = route?.params?.customerCode;
   const customerId = route?.params?.customerId;
   const selectedDate = route?.params?.selectedDate;
   const sessionId = route?.params?.sessionId;
   const sessionName = route?.params?.sessionName;
   const tripNo = route?.params?.tripNo ?? 1;
   const toastTimerRef = useRef(null);
-  const title = customerName || 'Customer';
-  const subtitle = [formatIsoDateForDisplay(selectedDate), sessionName].filter(Boolean).join(' | ');
+  const title = customerCode || customerName || 'Customer';
+  
+  const getSubtitle = () => {
+    const parts = [];
+    parts.push(formatIsoDateForDisplay(selectedDate));
+    
+    if (selectedDate) {
+      const date = new Date(selectedDate + 'T00:00:00');
+      if (!Number.isNaN(date.getTime())) {
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+        parts.push(dayName);
+      }
+    }
+    
+    if (sessionName) {
+      parts.push(sessionName);
+    }
+    
+    return parts.filter(Boolean).join(' | ');
+  };
+  
+  const subtitle = getSubtitle();
 
   const showFetchErrorToast = useCallback(() => {
     const message =
@@ -132,6 +152,7 @@ export default function MovementScreen({ route, navigation }) {
           despatchedQuantity: Number(row.despatchedQuantity ?? 0),
           returnedQuantity: Number(row.returnedQuantity ?? 0),
           syncStatus: row.syncStatus,
+          despatchApproved: Boolean(row.despatchApproved),
         });
         movementRowsByItemId.set(itemId, existingRows);
       });
@@ -142,9 +163,13 @@ export default function MovementScreen({ route, navigation }) {
       }));
 
       setItems(nextItems);
+      setDispatchedTotal(movementSummary.dispatchedTotal);
+      setReturnedTotal(movementSummary.returnedTotal);
     } catch (error) {
       console.log('Load movement items error:', error);
       setItems([]);
+      setDispatchedTotal(0);
+      setReturnedTotal(0);
     } finally {
       setLoading(false);
     }
@@ -163,27 +188,6 @@ export default function MovementScreen({ route, navigation }) {
     []
   );
 
-  const loadSummary = useCallback(async () => {
-    try {
-      const summary = await loadUtensilMovementSummaryWithInitialSync({
-        orderDate: selectedDate,
-        sessionId,
-        customerId,
-        tripNo,
-      });
-      setDispatchedTotal(summary.dispatchedTotal);
-      setReturnedTotal(summary.returnedTotal);
-    } catch (error) {
-      console.log('Load utensil movement summary error:', error);
-      setDispatchedTotal(0);
-      setReturnedTotal(0);
-    }
-  }, [customerId, selectedDate, sessionId, tripNo]);
-
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
 
@@ -196,14 +200,14 @@ export default function MovementScreen({ route, navigation }) {
       };
       await clearContextMovements(context);
       await refreshUtensilMovementsFromApi(context);
-      await Promise.all([loadItems(), loadSummary()]);
+      await loadItems();
     } catch (error) {
       console.log('Refresh utensil movement error:', error);
       showFetchErrorToast();
     } finally {
       setRefreshing(false);
     }
-  }, [customerId, loadItems, loadSummary, selectedDate, sessionId, showFetchErrorToast, tripNo]);
+  }, [customerId, loadItems, selectedDate, sessionId, showFetchErrorToast, tripNo]);
 
   const openOptionsMenu = useCallback(() => {
     Alert.alert('Movement Options', 'Choose an action', [
@@ -238,7 +242,7 @@ export default function MovementScreen({ route, navigation }) {
           await handleRefresh();
           await AsyncStorage.removeItem('justSubmitted');
         } else {
-          await Promise.all([loadItems(), loadSummary()]);
+          await loadItems();
         }
       } catch (error) {
         console.log('Reload utensil movement summary error:', error);
@@ -246,16 +250,18 @@ export default function MovementScreen({ route, navigation }) {
     });
 
     return unsubscribe;
-  }, [handleRefresh, loadItems, loadSummary, navigation]);
+  }, [handleRefresh, loadItems, navigation]);
 
   const renderUtensilTag = useCallback(
     (utensil) => {
       const isLocalOnly = utensil.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY;
       const isChanged = utensil.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
+      const isApproved = utensil.despatchApproved;
       const tagStyle = [
         styles.utensilTag,
         isLocalOnly ? styles.utensilTagLocalOnly : null,
         isChanged ? styles.utensilTagChanged : null,
+        isApproved ? styles.utensilTagApproved : null,
       ];
       const tagMetaStyle = [
         styles.utensilTagMeta,
@@ -266,9 +272,16 @@ export default function MovementScreen({ route, navigation }) {
 
       return (
         <View key={utensil.id} style={tagStyle}>
-          <Text style={styles.utensilTagName} numberOfLines={1}>
-            {utensil.name}
-          </Text>
+          <View style={styles.utensilTagHeader}>
+            <Text style={styles.utensilTagName} numberOfLines={1}>
+              {utensil.name}
+            </Text>
+            {isApproved && (
+              <View style={styles.approvedBadge}>
+                <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+              </View>
+            )}
+          </View>
           <Text style={tagMetaStyle}>
             {`D ${formatQuantity(utensil.despatchedQuantity)} | R ${formatQuantity(utensil.returnedQuantity)}`}
           </Text>
@@ -277,6 +290,7 @@ export default function MovementScreen({ route, navigation }) {
               styles.utensilTagBadge,
               isLocalOnly ? styles.utensilTagBadgeLocalOnly : null,
               isChanged ? styles.utensilTagBadgeChanged : null,
+              isApproved ? styles.utensilTagBadgeApproved : null,
             ]}
           >
             <Text
@@ -284,9 +298,10 @@ export default function MovementScreen({ route, navigation }) {
                 styles.utensilTagBadgeText,
                 isLocalOnly ? styles.utensilTagBadgeTextLocalOnly : null,
                 isChanged ? styles.utensilTagBadgeTextChanged : null,
+                isApproved ? styles.utensilTagBadgeTextApproved : null,
               ]}
             >
-              {statusLabel}
+              {isApproved ? '✓ Approved' : statusLabel}
             </Text>
           </View>
         </View>
@@ -295,7 +310,21 @@ export default function MovementScreen({ route, navigation }) {
     [formatQuantity]
   );
 
-  const renderItem = ({ item }) => (
+  const getItemColor = (index) => {
+    const colors = [
+      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
+      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
+      { icon: '#10b981', background: '#f0fdf4' }, // Green
+      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
+      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
+      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
+    ];
+    return colors[index % colors.length];
+  };
+
+  const renderItem = ({ item, index }) => {
+    const colors = getItemColor(index);
+    return (
     <Pressable
       style={{ width: '100%' }}
       onPress={() =>
@@ -313,24 +342,33 @@ export default function MovementScreen({ route, navigation }) {
           selectedDate,
           sessionName,
           customerName,
+          customerCode,
           tripNo,
         })
       }
     >
-      <View style={styles.itemCard}>
-        <View style={styles.itemHeader}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          <Text style={styles.itemQuantity}>
-            {`${formatQuantity(item.quantity)}${item.uomName ? ` ${item.uomName}` : ''}`}
-          </Text>
+      <View style={[styles.itemCard, { backgroundColor: colors.background }]}>
+        <View style={styles.itemCardHeader}>
+          <View style={[styles.itemIconWrap, { backgroundColor: colors.icon }]}>
+            <Ionicons name="restaurant" size={20} color="#fff" />
+          </View>
+          <View style={styles.itemContentWrap}>
+            <View style={styles.itemNameRow}>
+              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.itemQuantityInline}>
+                {`${formatQuantity(item.quantity)}${item.uomName ? ` ${item.uomName}` : ''}`}
+              </Text>
+            </View>
+            {!!item.comboNamesLabel && <Text style={styles.itemMeta}>{item.comboNamesLabel}</Text>}
+          </View>
         </View>
-        {!!item.comboNamesLabel && <Text style={styles.itemMeta}>{item.comboNamesLabel}</Text>}
         {!!item.utensilTags?.length && (
           <View style={styles.utensilTagsWrap}>{item.utensilTags.map(renderUtensilTag)}</View>
         )}
       </View>
     </Pressable>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -343,7 +381,7 @@ export default function MovementScreen({ route, navigation }) {
         </View>
       ) : (
         <FlatList
-          data={items}
+          data={items.filter(item => Number(item.quantity ?? 0) > 0)}
           keyExtractor={(item, index) => `${item.id}-${item.utensilTags.length}-${index}`}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
@@ -363,6 +401,7 @@ export default function MovementScreen({ route, navigation }) {
               customerId,
               sessionName,
               customerName,
+              customerCode,
               tripNo,
             })
           }
@@ -371,10 +410,23 @@ export default function MovementScreen({ route, navigation }) {
           <Text style={styles.summaryValue}>{dispatchedTotal}</Text>
         </Pressable>
         <View style={styles.summaryDivider} />
-        <View style={[styles.summaryBlock, styles.summaryBlockRight]}>
-          <Text style={styles.summaryLabel}>Retruned Utensil</Text>
+        <Pressable
+          style={[styles.summaryBlock, styles.summaryBlockRight]}
+          onPress={() =>
+            navigation.navigate('ReturnedUtensils', {
+              selectedDate,
+              sessionId,
+              customerId,
+              sessionName,
+              customerName,
+              customerCode,
+              tripNo,
+            })
+          }
+        >
+          <Text style={styles.summaryLabel}>Returned Utensil</Text>
           <Text style={styles.summaryValue}>{returnedTotal}</Text>
-        </View>
+        </Pressable>
       </View>
 
       {!!toastMessage && (
@@ -413,27 +465,78 @@ const styles = StyleSheet.create({
   listContent: {
     width: '100%',
     paddingBottom: 16,
+    gap: 8,
   },
   itemCard: {
     width: '100%',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  itemCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  itemIconWrap: {
+    width: 44,
+    height: 44,
     borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  itemContentWrap: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  itemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    flex: 1,
+  },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  itemQuantityInline: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    textAlign: 'right',
+    flexShrink: 0,
+  },
+  itemQuantityText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  itemQuantityBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemQuantityValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  itemUomName: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
   },
   itemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-  },
-  itemName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
   },
   itemQuantity: {
     fontSize: 13,
@@ -450,7 +553,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   utensilTag: {
     flexDirection: 'row',
@@ -510,6 +616,25 @@ const styles = StyleSheet.create({
   },
   utensilTagBadgeTextChanged: {
     color: '#92400e',
+  },
+  utensilTagApproved: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#86efac',
+  },
+  utensilTagBadgeApproved: {
+    backgroundColor: '#bbf7d0',
+  },
+  utensilTagBadgeTextApproved: {
+    color: '#166534',
+  },
+  utensilTagHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  approvedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   emptyText: {
     fontSize: 13,

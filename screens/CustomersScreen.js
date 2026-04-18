@@ -1,21 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    ToastAndroid,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
 } from 'react-native';
 import {
-    loadCustomersWithInitialSync,
-    loadSessionCustomersWithInitialSync,
-    refreshCustomersFromApi,
-    syncSessionCustomersFromApi,
+  loadCustomersWithInitialSync,
+  loadSessionCustomersWithInitialSync,
+  refreshCustomersFromApi,
+  syncSessionCustomersFromApi,
 } from '../utils/customers';
 import { formatIsoDateForDisplay } from '../utils/date';
 
@@ -29,21 +29,20 @@ export default function CustomersScreen({ navigation, route }) {
   const selectedDate = route?.params?.selectedDate;
   const sessionId = route?.params?.sessionId;
   const sessionName = route?.params?.sessionName;
-  const titleText = formatIsoDateForDisplay(selectedDate, 'No date selected');
-
-  const formatLastSync = useCallback((value) => {
-    if (!value) {
-      return 'Last sync: Not synced yet';
-    }
-
-    const parsedDate = new Date(value);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return 'Last sync: Not synced yet';
-    }
-
-    return `Last sync: ${parsedDate.toLocaleString()}`;
-  }, []);
-  const subtitleText = [sessionName, formatLastSync(lastSyncAt)].filter(Boolean).join(' | ');
+  const titleText = sessionName || 'Session';
+  
+  const getSubtitleText = () => {
+    const dateText = formatIsoDateForDisplay(selectedDate, 'No date selected');
+    if (!selectedDate) return dateText;
+    
+    const date = new Date(selectedDate + 'T00:00:00');
+    if (Number.isNaN(date.getTime())) return dateText;
+    
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+    return `${dateText} | ${dayName}`;
+  };
+  
+  const subtitleText = getSubtitleText();
 
   const showFetchErrorToast = useCallback(() => {
     const message = 'Unable to fetch customers data. Please check your internet connection and try again.';
@@ -169,38 +168,65 @@ export default function CustomersScreen({ navigation, route }) {
     loadCustomers();
   }, [loadCustomers]);
 
-  const renderCustomerItem = ({ item }) => (
-    <Pressable
-      onPress={() =>
-        navigation.navigate('Movement', {
-          customerId: item.id,
-          customerName: item.name,
-          selectedDate,
-          sessionId,
-          sessionName,
-        })
-      }
-    >
-      <View style={styles.card}>
-        <View style={styles.cardBody}>
-          <Text style={styles.customerName} numberOfLines={2}>{item.name}</Text>
-          {!!item.companyAddress?.line1 && (
-            <Text style={styles.addressText} numberOfLines={1}>{item.companyAddress.line1}</Text>
-          )}
-          {!!item.companyAddress?.line2 && (
-            <Text style={styles.addressText} numberOfLines={1}>{item.companyAddress.line2}</Text>
-          )}
-          {!!item.companyAddress?.city && (
-            <Text style={styles.addressText} numberOfLines={1}>{item.companyAddress.city}</Text>
-          )}
-        </View>
-      </View>
-    </Pressable>
-  );
+  const getCustomerColor = (index) => {
+    const colors = [
+      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
+      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
+      { icon: '#10b981', background: '#f0fdf4' }, // Green
+      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
+      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
+      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
+    ];
+    return colors[index % colors.length];
+  };
 
-  const renderListFooter = () => (
-    <Text style={styles.listFooterText}>Offline cache by selected date and session.</Text>
-  );
+  const renderCustomerItem = ({ item, index }) => {
+    const colors = getCustomerColor(index);
+    return (
+      <Pressable
+        onPress={() =>
+          navigation.navigate('Movement', {
+            customerId: item.id,
+            customerCode: item.code,
+            customerName: item.name,
+            selectedDate,
+            sessionId,
+            sessionName,
+          })
+        }
+      >
+        <View style={[styles.customerCard, { backgroundColor: colors.background }]}>
+          <View style={[styles.customerIconWrap, { backgroundColor: colors.icon }]}>
+            <Ionicons name="business" size={24} color="#fff" />
+          </View>
+          <View style={styles.customerContent}>
+            <Text style={styles.customerCode} numberOfLines={1}>
+              {item.code || 'N/A'}
+            </Text>
+            <Text style={styles.customerNameSubtitle} numberOfLines={2}>
+              {item.name}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
+        </View>
+      </Pressable>
+    );
+  };
+
+  const renderListFooter = () => {
+    if (!lastSyncAt) {
+      return <Text style={styles.listFooterText}>Last sync: Not synced yet</Text>;
+    }
+
+    const parsedDate = new Date(lastSyncAt);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return <Text style={styles.listFooterText}>Last sync: Not synced yet</Text>;
+    }
+
+    return (
+      <Text style={styles.listFooterText}>Last sync: {parsedDate.toLocaleString()}</Text>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -262,6 +288,36 @@ const styles = StyleSheet.create({
   listContent: {
     paddingTop: 8,
     paddingBottom: 24,
+    gap: 12,
+  },
+  customerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  customerIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  customerContent: {
+    flex: 1,
+  },
+  customerCode: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  customerNameSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748b',
   },
   card: {
     borderWidth: 1,

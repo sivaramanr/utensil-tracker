@@ -1,17 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    ToastAndroid,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
 } from 'react-native';
-  import { formatIsoDateForDisplay } from '../utils/date';
+import { formatIsoDateForDisplay } from '../utils/date';
 import { loadSessionsWithInitialSync, refreshSessionsFromApi } from '../utils/sessions';
 
 function parseIsoDate(value) {
@@ -124,22 +124,36 @@ export default function SessionScreen({ navigation, route }) {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: displayedDate,
+      title: 'Sessions',
       headerRight: () => (
         <Pressable onPress={openOptionsMenu} style={styles.menuButton} hitSlop={10}>
           <Ionicons name="ellipsis-vertical" size={22} color="#1f2937" />
         </Pressable>
       ),
     });
-  }, [displayedDate, navigation, openOptionsMenu]);
+  }, [navigation, openOptionsMenu]);
 
   // Load from SQLite first; initial API sync happens only when table is empty.
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
-  const renderSessionItem = ({ item }) => {
+  const getSessionColor = (index) => {
+    const colors = [
+      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
+      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
+      { icon: '#10b981', background: '#f0fdf4' }, // Green
+      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
+      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
+      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
+    ];
+    return colors[index % colors.length];
+  };
+
+  const renderSessionItem = ({ item, index }) => {
     const active = Boolean(item.isActive);
+    const colors = getSessionColor(index);
+    const opacity = active ? 1 : 0.5;
 
     const handleSessionPress = () => {
       navigation.navigate('Customers', {
@@ -150,19 +164,34 @@ export default function SessionScreen({ navigation, route }) {
     };
 
     return (
-      <Pressable style={styles.sessionItem} onPress={handleSessionPress}>
-        <View style={[styles.iconSquare, active ? styles.iconActive : styles.iconInactive]}>
-          <Ionicons name="square" size={32} color={active ? '#0b6bcb' : '#9ca3af'} />
+      <Pressable 
+        style={[styles.sessionCard, { backgroundColor: colors.background, opacity }]} 
+        onPress={handleSessionPress}
+      >
+        <View style={[styles.sessionIconWrap, { backgroundColor: colors.icon }]}>
+          <Ionicons name="fast-food" size={24} color="#fff" />
         </View>
-        <Text style={[styles.sessionName, !active && styles.sessionNameInactive]} numberOfLines={2}>
-          {item.name}
-        </Text>
+        <View style={styles.sessionContent}>
+          <Text style={styles.sessionCardName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.sessionStatus}>
+            {active ? 'Active' : 'Inactive'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
       </Pressable>
     );
   };
 
   return (
     <View style={styles.container}>
+      <Text style={styles.title}>{displayedDate}</Text>
+      {currentDate && (
+        <Text style={styles.subtitle}>
+          {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+        </Text>
+      )}
       {loading ? (
         <View style={styles.loaderWrap}>
           <ActivityIndicator size="large" />
@@ -172,9 +201,8 @@ export default function SessionScreen({ navigation, route }) {
           data={sessions}
           keyExtractor={(item, index) => `${item.id}-${index}`}
           renderItem={renderSessionItem}
-          numColumns={3}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.gridRow}
+          numColumns={1}
+          contentContainerStyle={styles.listContent}
           ListEmptyComponent={<Text style={styles.emptyText}>No sessions available.</Text>}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -196,6 +224,17 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#fff',
   },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
   menuButton: {
     paddingHorizontal: 6,
     paddingVertical: 4,
@@ -205,44 +244,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gridContent: {
-    paddingTop: 8,
+  listContent: {
     paddingBottom: 24,
+    gap: 12,
   },
-  gridRow: {
-    justifyContent: 'space-between',
-  },
-  sessionItem: {
-    width: '31%',
-    marginBottom: 16,
+  sessionCard: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
-  iconSquare: {
-    width: 70,
-    height: 70,
+  sessionIconWrap: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-    borderWidth: 1,
+    marginRight: 12,
   },
-  iconActive: {
-    backgroundColor: '#e8f3ff',
-    borderColor: '#0b6bcb',
-    opacity: 1,
+  sessionContent: {
+    flex: 1,
   },
-  iconInactive: {
-    backgroundColor: '#f3f4f6',
-    borderColor: '#d1d5db',
-    opacity: 0.45,
+  sessionCardName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
   },
-  sessionName: {
-    fontSize: 13,
-    textAlign: 'center',
-    color: '#111827',
-  },
-  sessionNameInactive: {
-    color: '#6b7280',
+  sessionStatus: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
   },
   emptyText: {
     marginTop: 24,

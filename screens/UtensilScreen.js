@@ -1,9 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatIsoDateForDisplay } from '../utils/date';
 import {
-    loadUtensilMovementSummaryWithInitialSync,
-    setUtensilMovementQuantity,
+  loadUtensilMovementSummaryWithInitialSync,
+  setUtensilMovementQuantity,
 } from '../utils/utensilMovements';
 import { loadUtensilTypesByItemGroupWithInitialSync } from '../utils/utensilTypes';
 import { loadUtensilsByTypeIdsWithInitialSync } from '../utils/utensils';
@@ -18,10 +18,9 @@ export default function UtensilScreen({ route, navigation }) {
   const selectedDate = route?.params?.selectedDate;
   const sessionName = route?.params?.sessionName;
   const customerName = route?.params?.customerName;
+  const customerCode = route?.params?.customerCode;
   const tripNo = route?.params?.tripNo ?? 1;
-  const subtitle = [formatIsoDateForDisplay(selectedDate), sessionName, customerName]
-    .filter(Boolean)
-    .join(' | ');
+  const subtitle = [sessionName, customerCode].filter(Boolean).join(' | ');
   const [utensils, setUtensils] = useState([]);
   const [countsByUtensilId, setCountsByUtensilId] = useState({});
   const [dispatchedTotal, setDispatchedTotal] = useState(0);
@@ -63,6 +62,18 @@ export default function UtensilScreen({ route, navigation }) {
     loadUtensils();
   }, [loadUtensils]);
 
+  const getUtensilColor = (index) => {
+    const colors = [
+      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
+      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
+      { icon: '#10b981', background: '#f0fdf4' }, // Green
+      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
+      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
+      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
+    ];
+    return colors[index % colors.length];
+  };
+
   const updateCount = useCallback(
     async (utensilId, delta) => {
       const currentCount = Number(countsByUtensilId[utensilId] ?? 0);
@@ -101,12 +112,16 @@ export default function UtensilScreen({ route, navigation }) {
     [countsByUtensilId, customerId, itemDespatchItemId, itemId, selectedDate, sessionId, tripNo]
   );
 
-  const renderUtensilItem = ({ item }) => {
+  const renderUtensilItem = ({ item, index }) => {
     const count = Number(countsByUtensilId[item.id] ?? 0);
+    const colors = getUtensilColor(index);
 
     return (
-      <View style={styles.rowItem}>
+      <View style={[styles.rowItem, { backgroundColor: colors.background }]}>
         <View style={styles.rowContent}>
+          <View style={[styles.utensilIconWrap, { backgroundColor: colors.icon }]}>
+            <Ionicons name="basket" size={20} color="#fff" />
+          </View>
           <View style={styles.rowTextWrap}>
             <Text style={styles.rowTitle}>{item.name}</Text>
             {!!item.utensilTypeName && <Text style={styles.rowSubtitle}>{item.utensilTypeName}</Text>}
@@ -116,7 +131,11 @@ export default function UtensilScreen({ route, navigation }) {
             <Pressable style={styles.counterButton} onPress={() => updateCount(item.id, -1)}>
               <Text style={styles.counterButtonText}>-</Text>
             </Pressable>
-            <Text style={styles.counterValue}>{count}</Text>
+            <View style={[styles.counterValueWrap, count > 0 && styles.counterValueWrapActive]}>
+              <Text style={[styles.counterValue, count > 0 && styles.counterValueActive]}>
+                {count}
+              </Text>
+            </View>
             <Pressable style={styles.counterButton} onPress={() => updateCount(item.id, 1)}>
               <Text style={styles.counterButtonText}>+</Text>
             </Pressable>
@@ -171,21 +190,27 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 16,
+    gap: 8,
   },
   rowItem: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    marginBottom: 0,
   },
   rowContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  utensilIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   rowTextWrap: {
     flex: 1,
@@ -221,12 +246,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
+  counterValueWrap: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counterValueWrapActive: {
+    backgroundColor: '#3b82f6',
+  },
   counterValue: {
-    minWidth: 20,
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#111827',
+  },
+  counterValueActive: {
+    color: '#fff',
   },
   emptyText: {
     fontSize: 13,

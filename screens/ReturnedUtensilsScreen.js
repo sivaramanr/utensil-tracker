@@ -4,16 +4,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
-  approveDespatchedUtensilMovements,
-  getUtensilMovementRows,
-  loadUtensilMovementSummaryWithInitialSync,
-  refreshUtensilMovementsFromApi,
-  submitCreatedUtensilMovements,
-  utensilMovementSyncStatus,
+    approveReturnedUtensilMovements,
+    getUtensilMovementRows,
+    loadUtensilMovementSummaryWithInitialSync,
+    refreshUtensilMovementsFromApi,
+    submitReturnedUtensilMovements,
+    updateReturnedQuantity,
+    utensilMovementSyncStatus,
 } from '../utils/utensilMovements';
 import { getUtensilsByIds } from '../utils/utensils';
 
-export default function DespatchedUtensilsScreen({ route, navigation }) {
+export default function ReturnedUtensilsScreen({ route, navigation }) {
   const selectedDate = route?.params?.selectedDate;
   const sessionId = route?.params?.sessionId;
   const customerId = route?.params?.customerId;
@@ -51,6 +52,8 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
   const [approving, setApproving] = useState(false);
   const [isApproverMode, setIsApproverMode] = useState(false);
   const [selectedForApproval, setSelectedForApproval] = useState(new Set());
+  const [quantities, setQuantities] = useState({});
+  const [utensilItemMapping, setUtensilItemMapping] = useState({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -65,29 +68,45 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
       };
       await loadUtensilMovementSummaryWithInitialSync(context);
       let movementRows = await getUtensilMovementRows(context);
-      
-      // Filter rows based on mode
+
+      // Filter rows based on mode for approval - only show items with returnedQuantity that haven't been changed
       if (isApproverMode) {
-        // In approver mode, only show Submitted items (SERVER_UNCHANGED status)
         movementRows = movementRows.filter(
-          (row) => row?.syncStatus === utensilMovementSyncStatus.SERVER_UNCHANGED
+          (row) =>
+            Number(row?.returnedQuantity ?? 0) > 0 &&
+            row?.syncStatus === utensilMovementSyncStatus.SERVER_UNCHANGED &&
+            !Boolean(row?.returnApproved)
         );
       }
-      
+
       const rowsByUtensilId = new Map();
+      const quantitiesMap = {};
+      const itemMappingMap = {};
 
       movementRows.forEach((row) => {
         const utensilId = row?.utensilId != null ? String(row.utensilId) : null;
+        const itemId = row?.itemId != null ? String(row.itemId) : null;
+        const returnedQuantity = Number(row?.returnedQuantity ?? 0) || 0;
         const despatchedQuantity = Number(row?.despatchedQuantity ?? 0) || 0;
         const isChanged = row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
+        const isLocalOnly = row?.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY;
 
         if (!utensilId) {
           return;
         }
 
-        // Skip rows with 0 quantity unless they are Changed items
-        if (despatchedQuantity <= 0 && !isChanged) {
+        // Skip rows with no despatched quantity unless they are Created items
+        if (despatchedQuantity <= 0 && !isLocalOnly) {
           return;
+        }
+
+        quantitiesMap[utensilId] = returnedQuantity;
+        if (!itemMappingMap[utensilId]) {
+          // Use itemId if available, otherwise fall back to despatchItemId
+          const itemIdToUse = itemId || row?.despatchItemId;
+          if (itemIdToUse) {
+            itemMappingMap[utensilId] = String(itemIdToUse);
+          }
         }
 
         const existingRow = rowsByUtensilId.get(utensilId);
@@ -95,27 +114,29 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         if (!existingRow) {
           rowsByUtensilId.set(utensilId, {
             id: utensilId,
-            count: despatchedQuantity,
+            returnedCount: returnedQuantity,
+            despatchedCount: despatchedQuantity,
             syncStatus: row?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-            despatchApproved: Boolean(row?.despatchApproved),
+            returnApproved: Boolean(row?.returnApproved),
           });
           return;
         }
 
-        existingRow.count += despatchedQuantity;
+        existingRow.returnedCount += returnedQuantity;
+        existingRow.despatchedCount += despatchedQuantity;
 
-        if (row?.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY) {
+        if (isLocalOnly) {
           existingRow.syncStatus = utensilMovementSyncStatus.LOCAL_ONLY;
         } else if (
-          row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED &&
+          isChanged &&
           existingRow.syncStatus !== utensilMovementSyncStatus.LOCAL_ONLY
         ) {
           existingRow.syncStatus = utensilMovementSyncStatus.SERVER_MODIFIED;
         }
 
         // If any row is approved, mark the aggregated row as approved
-        if (row?.despatchApproved) {
-          existingRow.despatchApproved = true;
+        if (row?.returnApproved) {
+          existingRow.returnApproved = true;
         }
       });
 
@@ -124,6 +145,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
       if (ids.length === 0) {
         setRows([]);
         setTotal(0);
+        setQuantities({});
         return;
       }
 
@@ -140,22 +162,33 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
           id,
           name: utensilMap[id]?.name ?? `Utensil ${id}`,
           utensilTypeName: utensilMap[id]?.utensilTypeName ?? null,
-          count: Number(aggregatedRow?.count ?? 0),
+          returnedCount: Number(aggregatedRow?.returnedCount ?? 0),
+          despatchedCount: Number(aggregatedRow?.despatchedCount ?? 0),
           syncStatus:
             aggregatedRow?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-          despatchApproved: Boolean(aggregatedRow?.despatchApproved),
+          returnApproved: Boolean(aggregatedRow?.returnApproved),
         };
       });
 
       resolved.sort((a, b) => a.name.localeCompare(b.name));
 
-      const grandTotal = resolved.reduce((sum, r) => sum + r.count, 0);
+      const grandTotal = resolved.reduce((sum, r) => sum + r.returnedCount, 0);
+      console.log('[ReturnedUtensilsScreen] loadData completed:', { 
+        rowCount: resolved.length,
+        grandTotal,
+        itemMappingMap 
+      });
+      
       setRows(resolved);
       setTotal(grandTotal);
+      setQuantities(quantitiesMap);
+      setUtensilItemMapping(itemMappingMap);
     } catch (error) {
-      console.log('Load despatched utensils error:', error);
+      console.log('Load returned utensils error:', error);
       setRows([]);
       setTotal(0);
+      setQuantities({});
+      setUtensilItemMapping({});
     } finally {
       setLoading(false);
     }
@@ -179,10 +212,11 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         customerId,
         tripNo,
       };
-      const result = await submitCreatedUtensilMovements(context);
+      const result = await submitReturnedUtensilMovements(context);
 
-      if (result.submittedCount === 0) {
+      if (result.createdCount === 0 && result.changedCount === 0) {
         Alert.alert('Submit', 'No utensil movements to submit.');
+        setSubmitting(false);
         return;
       }
 
@@ -191,7 +225,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
       const messages = [];
       if (result.createdCount > 0) messages.push(`${result.createdCount} created`);
       if (result.changedCount > 0) messages.push(`${result.changedCount} updated`);
-      Alert.alert('Submit', `${messages.join(' and ')} utensil movement(s) submitted successfully.`, [
+      Alert.alert('Submit', `${messages.join(' and ')} returned utensil movement(s) submitted successfully.`, [
         {
           text: 'OK',
           onPress: () => {
@@ -201,7 +235,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         },
       ]);
     } catch (error) {
-      console.log('Submit despatched utensils error:', error);
+      console.log('Submit returned utensils error:', error);
       Alert.alert(
         'Submit Failed',
         error?.message || 'Unable to submit utensil movements. Please try again.'
@@ -209,7 +243,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
     } finally {
       setSubmitting(false);
     }
-  }, [customerId, loadData, selectedDate, sessionId, tripNo]);
+  }, [customerId, loadData, navigation, selectedDate, sessionId, tripNo]);
 
   const handleApprove = useCallback(async () => {
     if (selectedForApproval.size === 0) {
@@ -227,7 +261,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         tripNo,
       };
       const selectedUtensilIds = Array.from(selectedForApproval);
-      const result = await approveDespatchedUtensilMovements(context, selectedUtensilIds);
+      const result = await approveReturnedUtensilMovements(context, selectedUtensilIds);
 
       if (result.approvedCount === 0) {
         Alert.alert('Approve', 'No utensil movements to approve.');
@@ -248,7 +282,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         },
       ]);
     } catch (error) {
-      console.log('Approve despatched utensils error:', error);
+      console.log('Approve returned utensils error:', error);
       Alert.alert(
         'Approve Failed',
         error?.message || 'Unable to approve utensil movements. Please try again.'
@@ -256,18 +290,6 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
       setApproving(false);
     }
   }, [customerId, loadData, navigation, selectedDate, sessionId, tripNo, selectedForApproval]);
-
-  const getRowColor = (index) => {
-    const colors = [
-      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
-      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
-      { icon: '#10b981', background: '#f0fdf4' }, // Green
-      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
-      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
-      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
-    ];
-    return colors[index % colors.length];
-  };
 
   const toggleItemSelection = useCallback((itemId) => {
     setSelectedForApproval((prev) => {
@@ -281,12 +303,61 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
     });
   }, []);
 
+  const updateQuantity = useCallback(
+    async (utensilId, newQuantity) => {
+      if (newQuantity < 0) return;
+
+      console.log('[ReturnedUtensilsScreen] updateQuantity called:', { utensilId, newQuantity });
+      console.log('[ReturnedUtensilsScreen] utensilItemMapping:', utensilItemMapping);
+
+      setQuantities((prev) => ({
+        ...prev,
+        [utensilId]: newQuantity,
+      }));
+
+      // Save to database
+      try {
+        const context = {
+          orderDate: selectedDate,
+          sessionId,
+          customerId,
+          tripNo,
+        };
+        const itemId = utensilItemMapping[utensilId];
+        console.log('[ReturnedUtensilsScreen] Resolved itemId:', itemId);
+        
+        if (itemId) {
+          console.log('[ReturnedUtensilsScreen] Calling updateReturnedQuantity');
+          await updateReturnedQuantity(context, utensilId, itemId, newQuantity);
+        } else {
+          console.log('[ReturnedUtensilsScreen] WARNING: itemId not found in mapping for utensilId:', utensilId);
+        }
+      } catch (error) {
+        console.log('Update returned quantity error:', error);
+      }
+    },
+    [customerId, selectedDate, sessionId, tripNo, utensilItemMapping]
+  );
+
+  const getRowColor = (index) => {
+    const colors = [
+      { icon: '#3b82f6', background: '#eff6ff' }, // Blue
+      { icon: '#f59e0b', background: '#fffbeb' }, // Amber
+      { icon: '#10b981', background: '#f0fdf4' }, // Green
+      { icon: '#8b5cf6', background: '#faf5ff' }, // Purple
+      { icon: '#ec4899', background: '#fdf2f8' }, // Pink
+      { icon: '#06b6d4', background: '#ecfdfd' }, // Cyan
+    ];
+    return colors[index % colors.length];
+  };
+
   const renderItem = ({ item, index }) => {
     const isLocalOnly = item.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY;
     const isChanged = item.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
-    const isApproved = item.despatchApproved;
+    const isApproved = item.returnApproved;
     const shouldShowCheckbox = isApproverMode && (!isApproved || isChanged);
     const isSelected = selectedForApproval.has(item.id);
+    const returnedQty = quantities[item.id] ?? item.returnedCount;
     const statusLabel = isLocalOnly ? 'Created' : isChanged ? 'Changed' : isApproved ? 'Approved' : 'Submitted';
     const colors = getRowColor(index);
 
@@ -335,26 +406,35 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
                   {statusLabel}
                 </Text>
               </View>
+              <Text style={styles.despatchedLabel}>
+                Despatched: {item.despatchedCount}
+              </Text>
             </View>
             <View style={styles.rowRight}>
-              <View
-                style={[
-                  styles.countBadge,
-                  isLocalOnly ? styles.countBadgeLocalOnly : null,
-                  isChanged ? styles.countBadgeChanged : null,
-                  isApproved ? styles.countBadgeApproved : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.countText,
-                    isLocalOnly ? styles.countTextLocalOnly : null,
-                    isChanged ? styles.countTextChanged : null,
-                    isApproved ? styles.countTextApproved : null,
-                  ]}
+              <View style={styles.quantityControl}>
+                <Pressable
+                  style={styles.quantityButton}
+                  onPress={() => updateQuantity(item.id, returnedQty - 1)}
+                  disabled={isApproverMode}
                 >
-                  {item.count}
-                </Text>
+                  <Ionicons name="remove" size={18} color={isApproverMode ? '#d1d5db' : '#1d4ed8'} />
+                </Pressable>
+                <Text style={styles.quantityValue}>{returnedQty}</Text>
+                <Pressable
+                  style={styles.quantityButton}
+                  onPress={() => updateQuantity(item.id, returnedQty + 1)}
+                  disabled={isApproverMode || returnedQty >= item.despatchedCount}
+                >
+                  <Ionicons
+                    name="add"
+                    size={18}
+                    color={
+                      isApproverMode || returnedQty >= item.despatchedCount
+                        ? '#d1d5db'
+                        : '#1d4ed8'
+                    }
+                  />
+                </Pressable>
               </View>
             </View>
           </View>
@@ -380,7 +460,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              {isApproverMode ? 'No submitted utensils to approve.' : 'No utensils despatched yet.'}
+              {isApproverMode ? 'No returned utensils to approve.' : 'No utensils returned yet.'}
             </Text>
           }
         />
@@ -389,10 +469,10 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
       {!loading && rows.length > 0 && (
         <View style={styles.totalBar}>
           <Text style={styles.totalLabel}>
-            {isApproverMode ? 'Total Approved' : 'Total Despatched'}
+            {isApproverMode ? 'Total Approved' : 'Total Returned'}
           </Text>
           <Text style={styles.totalValue}>
-            {rows.reduce((sum, row) => sum + row.count, 0)}
+            {rows.reduce((sum, row) => sum + (quantities[row.id] ?? row.returnedCount), 0)}
           </Text>
         </View>
       )}
@@ -444,138 +524,41 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     backgroundColor: '#fff',
-    padding: 16,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#111827',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '500',
     color: '#6b7280',
-    marginBottom: 12,
+    marginTop: 4,
   },
   loaderWrap: {
-    paddingTop: 8,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   listContent: {
-    paddingBottom: 16,
-    gap: 8,
+    flexGrow: 1,
   },
   rowItem: {
-    width: '100%',
+    marginBottom: 12,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   rowContent: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  rowIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rowTextWrap: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  rowRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  rowSubtitle: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    borderRadius: 999,
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  countBadge: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  countBadgeLocalOnly: {
-    backgroundColor: '#dcfce7',
-  },
-  countBadgeChanged: {
-    backgroundColor: '#fef3c7',
-  },
-  countText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1d4ed8',
-  },
-  countTextLocalOnly: {
-    color: '#166534',
-  },
-  countTextChanged: {
-    color: '#92400e',
-  },
-  statusBadgeLocalOnly: {
-    backgroundColor: '#bbf7d0',
-  },
-  statusBadgeChanged: {
-    backgroundColor: '#fde68a',
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#1d4ed8',
-  },
-  statusBadgeTextLocalOnly: {
-    color: '#166534',
-  },
-  statusBadgeTextChanged: {
-    color: '#92400e',
-  },
-  statusBadgeApproved: {
-    backgroundColor: '#bbf7d0',
-  },
-  statusBadgeTextApproved: {
-    color: '#166534',
-  },
-  countBadgeApproved: {
-    backgroundColor: '#bbf7d0',
-  },
-  countTextApproved: {
-    color: '#166534',
-  },
-  rowItemApproved: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#10b981',
-  },
-  rowTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rowApprovedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   checkboxWrap: {
     paddingRight: 8,
@@ -595,9 +578,106 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     borderColor: '#3b82f6',
   },
+  rowIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  rowTextWrap: {
+    flex: 1,
+  },
+  rowTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+  },
+  rowSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  despatchedLabel: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 4,
+  },
+  rowApprovedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusBadge: {
+    borderRadius: 999,
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  statusBadgeLocalOnly: {
+    backgroundColor: '#bbf7d0',
+  },
+  statusBadgeChanged: {
+    backgroundColor: '#fde68a',
+  },
+  statusBadgeApproved: {
+    backgroundColor: '#bbf7d0',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  statusBadgeTextLocalOnly: {
+    color: '#166534',
+  },
+  statusBadgeTextChanged: {
+    color: '#92400e',
+  },
+  statusBadgeTextApproved: {
+    color: '#166534',
+  },
+  rowRight: {
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    marginLeft: 12,
+  },
+  quantityControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  quantityButton: {
+    padding: 4,
+  },
+  quantityValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  rowItemApproved: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#10b981',
+  },
   emptyText: {
     fontSize: 13,
     color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 32,
   },
   totalBar: {
     marginTop: 8,

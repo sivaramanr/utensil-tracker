@@ -11,6 +11,7 @@ import ItemGroupScreen from './screens/ItemGroupScreen';
 import LoginScreen from './screens/LoginScreen';
 import MovementScreen from './screens/MovementScreen';
 import OutgoingScreen from './screens/OutgoingScreen';
+import ReturnedUtensilsScreen from './screens/ReturnedUtensilsScreen';
 import SessionScreen from './screens/SessionScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import UtensilScreen from './screens/UtensilScreen';
@@ -129,6 +130,14 @@ export default function App() {
           component={DespatchedUtensilsScreen}
           options={{
             title: 'Despatched Utensils',
+            headerTitleAlign: 'center',
+          }}
+        />
+        <Stack.Screen
+          name="ReturnedUtensils"
+          component={ReturnedUtensilsScreen}
+          options={{
+            title: 'Returned Utensils',
             headerTitleAlign: 'center',
           }}
         />
