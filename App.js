@@ -52,45 +52,46 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName={initialRoute}>
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
         <Stack.Screen
           name="Home"
           component={HomeScreen}
           options={{
-            title: 'Home',
-            headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
           options={{
-            title: 'Settings',
-            headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="ItemGroups"
           component={ItemGroupScreen}
           options={{
-            title: 'Item Groups',
-            headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="UtensilTypes"
           component={UtensilTypesScreen}
           options={{
-            title: 'Utensil Types',
-            headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="UtensilTypeDetail"
           component={UtensilTypeDetailScreen}
           options={{
-            title: 'Utensil',
-            headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -99,6 +100,7 @@ export default function App() {
           options={{
             title: 'Session',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -107,6 +109,7 @@ export default function App() {
           options={{
             title: 'Customers',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -115,6 +118,7 @@ export default function App() {
           options={{
             title: 'Movement',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -123,6 +127,7 @@ export default function App() {
           options={{
             title: 'Utensil',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -131,6 +136,7 @@ export default function App() {
           options={{
             title: 'Despatched Utensils',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -139,6 +145,7 @@ export default function App() {
           options={{
             title: 'Returned Utensils',
             headerTitleAlign: 'center',
+            headerShown: false,
           }}
         />
         <Stack.Screen

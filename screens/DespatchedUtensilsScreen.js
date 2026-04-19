@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { getSessionCustomerItems } from '../utils/customers';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
   approveDespatchedUtensilMovements,
@@ -74,80 +75,78 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         );
       }
       
-      const rowsByUtensilId = new Map();
-
-      movementRows.forEach((row) => {
+      // Filter rows: keep only valid ones
+      const validRows = movementRows.filter((row) => {
         const utensilId = row?.utensilId != null ? String(row.utensilId) : null;
         const despatchedQuantity = Number(row?.despatchedQuantity ?? 0) || 0;
         const isChanged = row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
 
         if (!utensilId) {
-          return;
+          return false;
         }
 
         // Skip rows with 0 quantity unless they are Changed items
         if (despatchedQuantity <= 0 && !isChanged) {
-          return;
+          return false;
         }
 
-        const existingRow = rowsByUtensilId.get(utensilId);
-
-        if (!existingRow) {
-          rowsByUtensilId.set(utensilId, {
-            id: utensilId,
-            count: despatchedQuantity,
-            syncStatus: row?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-            despatchApproved: Boolean(row?.despatchApproved),
-          });
-          return;
-        }
-
-        existingRow.count += despatchedQuantity;
-
-        if (row?.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY) {
-          existingRow.syncStatus = utensilMovementSyncStatus.LOCAL_ONLY;
-        } else if (
-          row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED &&
-          existingRow.syncStatus !== utensilMovementSyncStatus.LOCAL_ONLY
-        ) {
-          existingRow.syncStatus = utensilMovementSyncStatus.SERVER_MODIFIED;
-        }
-
-        // If any row is approved, mark the aggregated row as approved
-        if (row?.despatchApproved) {
-          existingRow.despatchApproved = true;
-        }
+        return true;
       });
 
-      const ids = Array.from(rowsByUtensilId.keys());
-
-      if (ids.length === 0) {
+      if (validRows.length === 0) {
         setRows([]);
         setTotal(0);
         return;
       }
 
-      const utensils = await getUtensilsByIds(ids);
+      // Get all utensil IDs from valid rows
+      const utensilIds = validRows.map((row) => String(row.utensilId));
+      const utensils = await getUtensilsByIds(utensilIds);
       const utensilMap = {};
       utensils.forEach((u) => {
         utensilMap[u.id] = u;
       });
 
-      const resolved = ids.map((id) => {
-        const aggregatedRow = rowsByUtensilId.get(id);
+      // Get session customer items to fetch recipe names
+      const sessionItems = await getSessionCustomerItems({
+        orderDate: selectedDate,
+        sessionId,
+        customerId,
+      });
+      
+      // Build recipe map from recipeId to recipeName
+      const recipeMap = {};
+      sessionItems.forEach((item) => {
+        if (item.recipeId && item.recipeName) {
+          recipeMap[item.recipeId] = item.recipeName;
+        }
+      });
 
+      // Map each movement row to a display item (no grouping)
+      const resolved = validRows.map((row, index) => {
+        const utensilId = String(row.utensilId);
+        const recipeId = row?.recipeId;
         return {
-          id,
-          name: utensilMap[id]?.name ?? `Utensil ${id}`,
-          utensilTypeName: utensilMap[id]?.utensilTypeName ?? null,
-          count: Number(aggregatedRow?.count ?? 0),
-          syncStatus:
-            aggregatedRow?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-          despatchApproved: Boolean(aggregatedRow?.despatchApproved),
+          id: row?.id != null ? String(row.id) : `${utensilId}-${index}`,
+          originalId: row?.id != null ? String(row.id) : null,
+          itemId: row?.itemId != null ? String(row.itemId) : null,
+          despatchItemId: row?.despatchItemId != null ? String(row.despatchItemId) : null,
+          utensilId,
+          name: utensilMap[utensilId]?.name ?? `Utensil ${utensilId}`,
+          utensilTypeName: utensilMap[utensilId]?.utensilTypeName ?? null,
+          recipeName: recipeId ? recipeMap[recipeId] || recipeId : null,
+          count: Number(row?.despatchedQuantity ?? 0),
+          syncStatus: row?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
+          despatchApproved: Boolean(row?.despatchApproved),
         };
       });
 
-      resolved.sort((a, b) => a.name.localeCompare(b.name));
+      resolved.sort((a, b) => {
+        // Sort by recipe name first, then by utensil name
+        const recipeCompare = (a.recipeName || '').localeCompare(b.recipeName || '');
+        if (recipeCompare !== 0) return recipeCompare;
+        return a.name.localeCompare(b.name);
+      });
 
       const grandTotal = resolved.reduce((sum, r) => sum + r.count, 0);
       setRows(resolved);
@@ -226,8 +225,15 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         customerId,
         tripNo,
       };
-      const selectedUtensilIds = Array.from(selectedForApproval);
-      const result = await approveDespatchedUtensilMovements(context, selectedUtensilIds);
+      const selectedMovements = rows
+        .filter((row) => selectedForApproval.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          utensilId: row.utensilId,
+          itemId: row.itemId,
+          despatchItemId: row.despatchItemId,
+        }));
+      const result = await approveDespatchedUtensilMovements(context, selectedMovements);
 
       if (result.approvedCount === 0) {
         Alert.alert('Approve', 'No utensil movements to approve.');
@@ -293,6 +299,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
     return (
       <Pressable onPress={() => shouldShowCheckbox && toggleItemSelection(item.id)}>
         <View style={[styles.rowItem, { backgroundColor: colors.background }, isApproved ? styles.rowItemApproved : null]}>
+          <View style={styles.rowItemGlow} />
           <View style={styles.rowContent}>
             {shouldShowCheckbox && (
               <View style={styles.checkboxWrap}>
@@ -313,6 +320,9 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
                   </View>
                 )}
               </View>
+              {!!item.recipeName && (
+                <Text style={styles.rowRecipeName}>{item.recipeName}</Text>
+              )}
               {!!item.utensilTypeName && (
                 <Text style={styles.rowSubtitle}>{item.utensilTypeName}</Text>
               )}
@@ -365,8 +375,30 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>{title}</Text>
+              <Text style={styles.title}>Despatched</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="cube-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{rows.length}</Text>
+          </View>
+        </View>
+        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -386,7 +418,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
         />
       )}
 
-      {!loading && rows.length > 0 && (
+      {/* {!loading && rows.length > 0 && (
         <View style={styles.totalBar}>
           <Text style={styles.totalLabel}>
             {isApproverMode ? 'Total Approved' : 'Total Despatched'}
@@ -395,7 +427,7 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
             {rows.reduce((sum, row) => sum + row.count, 0)}
           </Text>
         </View>
-      )}
+      )} */}
 
       {!loading && (
         <View style={styles.modeContainer}>
@@ -444,18 +476,101 @@ export default function DespatchedUtensilsScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
     padding: 16,
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 120,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
   },
   subtitle: {
     fontSize: 14,
     color: '#6b7280',
-    marginBottom: 12,
+    marginTop: 12,
   },
   loaderWrap: {
     paddingTop: 8,
@@ -466,9 +581,21 @@ const styles = StyleSheet.create({
   },
   rowItem: {
     width: '100%',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 24,
+    padding: 16,
     marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  rowItemGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   rowContent: {
     flexDirection: 'row',
@@ -476,9 +603,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -492,9 +619,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#0f172a',
+  },
+  rowRecipeName: {
+    fontSize: 12,
+    color: '#8b5cf6',
+    fontWeight: '500',
+    marginTop: 4,
   },
   rowSubtitle: {
     fontSize: 13,
@@ -510,13 +643,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   countBadge: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#eff6ff',
+    minWidth: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.78)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
   },
   countBadgeLocalOnly: {
     backgroundColor: '#dcfce7',
@@ -584,7 +717,7 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#d1d5db',
     justifyContent: 'center',
@@ -605,11 +738,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#eff6ff',
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 24,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: '#bfdbfe',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 3,
   },
   totalLabel: {
     fontSize: 14,
@@ -617,15 +755,15 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
   },
   totalValue: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#1d4ed8',
   },
   submitButton: {
     marginTop: 12,
     backgroundColor: '#1d4ed8',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
   },
   submitButtonText: {
@@ -648,9 +786,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 18,
   },
   modeLabel: {
     fontSize: 14,

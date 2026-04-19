@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -30,6 +31,9 @@ export default function MovementScreen({ route, navigation }) {
   const [dispatchedTotal, setDispatchedTotal] = useState(0);
   const [returnedTotal, setReturnedTotal] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
+  const listRef = useRef(null);
+  const scrollOffsetRef = useRef(0);
+  const shouldRestoreScrollRef = useRef(false);
   const customerName = route?.params?.customerName;
   const customerCode = route?.params?.customerCode;
   const customerId = route?.params?.customerId;
@@ -239,6 +243,7 @@ export default function MovementScreen({ route, navigation }) {
       try {
         const justSubmitted = await AsyncStorage.getItem('justSubmitted');
         if (justSubmitted) {
+          shouldRestoreScrollRef.current = false;
           await handleRefresh();
           await AsyncStorage.removeItem('justSubmitted');
         } else {
@@ -251,6 +256,20 @@ export default function MovementScreen({ route, navigation }) {
 
     return unsubscribe;
   }, [handleRefresh, loadItems, navigation]);
+
+  useEffect(() => {
+    if (loading || !shouldRestoreScrollRef.current) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({
+        offset: scrollOffsetRef.current,
+        animated: false,
+      });
+      shouldRestoreScrollRef.current = false;
+    });
+  }, [items, loading]);
 
   const renderUtensilTag = useCallback(
     (utensil) => {
@@ -327,7 +346,8 @@ export default function MovementScreen({ route, navigation }) {
     return (
     <Pressable
       style={{ width: '100%' }}
-      onPress={() =>
+      onPress={() => {
+        shouldRestoreScrollRef.current = true;
         navigation.navigate('Utensil', {
           itemId: item.id,
           itemDespatchItemId: item.despatchItemId,
@@ -337,6 +357,7 @@ export default function MovementScreen({ route, navigation }) {
           itemComboNamesLabel: item.comboNamesLabel,
           itemGroupId: item.groupId,
           itemGroupName: item.groupName,
+          recipeId: item.recipeId,
           sessionId,
           customerId,
           selectedDate,
@@ -344,10 +365,11 @@ export default function MovementScreen({ route, navigation }) {
           customerName,
           customerCode,
           tripNo,
-        })
-      }
+        });
+      }}
     >
       <View style={[styles.itemCard, { backgroundColor: colors.background }]}>
+        <View style={styles.itemCardGlow} />
         <View style={styles.itemCardHeader}>
           <View style={[styles.itemIconWrap, { backgroundColor: colors.icon }]}>
             <Ionicons name="restaurant" size={20} color="#fff" />
@@ -372,8 +394,30 @@ export default function MovementScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>{title}</Text>
+              <Text style={styles.title}>Items</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="swap-horizontal-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{items.length}</Text>
+          </View>
+        </View>
+        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -381,6 +425,7 @@ export default function MovementScreen({ route, navigation }) {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={items.filter(item => Number(item.quantity ?? 0) > 0)}
           keyExtractor={(item, index) => `${item.id}-${item.utensilTags.length}-${index}`}
           renderItem={renderItem}
@@ -388,6 +433,10 @@ export default function MovementScreen({ route, navigation }) {
           ListEmptyComponent={<Text style={styles.emptyText}>No items available.</Text>}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         />
       )}
 
@@ -441,19 +490,101 @@ export default function MovementScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
     padding: 16,
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 120,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
   },
   subtitle: {
     fontSize: 14,
     color: '#6b7280',
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 12,
   },
   menuButton: {
     paddingHorizontal: 6,
@@ -469,9 +600,21 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     width: '100%',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 24,
+    padding: 16,
     marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  itemCardGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   itemCardHeader: {
     flexDirection: 'row',
@@ -479,9 +622,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   itemIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -491,8 +634,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   itemName: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#0f172a',
     flex: 1,
   },
@@ -503,11 +646,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemQuantityInline: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
     textAlign: 'right',
     flexShrink: 0,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
   itemQuantityText: {
     fontSize: 12,
@@ -547,7 +694,7 @@ const styles = StyleSheet.create({
   itemMeta: {
     fontSize: 12,
     color: '#6b7280',
-    marginTop: 2,
+    marginTop: 4,
   },
   utensilTagsWrap: {
     flexDirection: 'row',
@@ -563,9 +710,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderRadius: 999,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.76)',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: 'rgba(203,213,225,0.9)',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -643,14 +790,19 @@ const styles = StyleSheet.create({
   summaryCard: {
     marginTop: 8,
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 3,
   },
   summaryBlock: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -668,13 +820,13 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontSize: 13,
     color: '#4b5563',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   summaryValue: {
     marginTop: 4,
-    fontSize: 20,
+    fontSize: 24,
     color: '#111827',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   toastContainer: {
     position: 'absolute',

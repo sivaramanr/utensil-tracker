@@ -513,8 +513,7 @@ async function getSessionDataCustomersCount({ orderDate, sessionId }) {
       FROM ${SESSION_DATA_CUSTOMERS_TABLE}
       WHERE orderDate = ? AND sessionId = ?;
     `,
-    orderDate,
-    String(sessionId)
+    [orderDate, String(sessionId)]
   );
 
   return Number(row?.count ?? 0);
@@ -530,8 +529,7 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
         DELETE FROM ${SESSION_DATA_CUSTOMERS_TABLE}
         WHERE orderDate = ? AND sessionId = ?;
       `,
-      orderDate,
-      String(sessionId)
+      [orderDate, String(sessionId)]
     );
 
     await db.runAsync(
@@ -539,8 +537,7 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
         DELETE FROM ${SESSION_DATA_COMBOS_TABLE}
         WHERE orderDate = ? AND sessionId = ?;
       `,
-      orderDate,
-      String(sessionId)
+      [orderDate, String(sessionId)]
     );
 
     await db.runAsync(
@@ -548,8 +545,7 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
         DELETE FROM ${SESSION_DATA_ITEMS_TABLE}
         WHERE orderDate = ? AND sessionId = ?;
       `,
-      orderDate,
-      String(sessionId)
+      [orderDate, String(sessionId)]
     );
 
     for (const customer of customers) {
@@ -573,18 +569,20 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         `,
-        cacheKey,
-        orderDate,
-        String(sessionId),
-        unitId,
-        customer.customerId,
-        customer.code,
-        customer.name,
-        customer.sortOrder,
-        customer.totalPaxValue,
-        customer.totalMainPaxValue,
-        customer.payloadJson,
-        syncedAt
+        [
+          cacheKey,
+          orderDate,
+          String(sessionId),
+          unitId,
+          customer.customerId,
+          customer.code,
+          customer.name,
+          customer.sortOrder,
+          customer.totalPaxValue,
+          customer.totalMainPaxValue,
+          customer.payloadJson,
+          syncedAt
+        ]
       );
 
       for (const combo of customer.combos ?? []) {
@@ -615,25 +613,27 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
           `,
-          comboCacheKey,
-          orderDate,
-          String(sessionId),
-          unitId,
-          customer.customerId,
-          combo.comboId,
-          combo.code,
-          combo.name,
-          combo.billableItemName,
-          combo.isMainItem ? 1 : 0,
-          combo.salesOrderItemId,
-          combo.sortOrder,
-          combo.totalPax,
-          combo.actualPax,
-          combo.perPaxPrice,
-          combo.generalCost,
-          combo.totalPaxPrice,
-          combo.payloadJson,
-          syncedAt
+          [
+            comboCacheKey,
+            orderDate,
+            String(sessionId),
+            unitId,
+            customer.customerId,
+            combo.comboId,
+            combo.code,
+            combo.name,
+            combo.billableItemName,
+            combo.isMainItem ? 1 : 0,
+            combo.salesOrderItemId,
+            combo.sortOrder,
+            combo.totalPax,
+            combo.actualPax,
+            combo.perPaxPrice,
+            combo.generalCost,
+            combo.totalPaxPrice,
+            combo.payloadJson,
+            syncedAt
+          ]
         );
 
         for (const sessionItem of combo.items ?? []) {
@@ -679,40 +679,42 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
               )
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             `,
-            itemCacheKey,
-            orderDate,
-            String(sessionId),
-            unitId,
-            customer.customerId,
-            combo.comboId,
-            sessionItem.itemId,
-            sessionItem.code,
-            sessionItem.name,
-            sessionItem.sortOrder,
-            sessionItem.uomId,
-            sessionItem.uomName,
-            sessionItem.groupId,
-            sessionItem.groupName,
-            sessionItem.groupOrder,
-            sessionItem.portion,
-            sessionItem.quantity,
-            sessionItem.isGeneralCostApplicable ? 1 : 0,
-            sessionItem.generalCost,
-            sessionItem.requestedCost,
-            sessionItem.approvedCost,
-            sessionItem.actualCost,
-            sessionItem.menuPlanId,
-            sessionItem.isActive ? 1 : 0,
-            sessionItem.menuPlanItemId,
-            sessionItem.actualRecipeId,
-            sessionItem.actualRecipeName,
-            sessionItem.changeRecipeId,
-            sessionItem.changeRecipeName,
-            sessionItem.portionCost,
-            sessionItem.rawMaterialSetJson,
-            sessionItem.tripsJson,
-            sessionItem.payloadJson,
-            syncedAt
+            [
+              itemCacheKey,
+              orderDate,
+              String(sessionId),
+              unitId,
+              customer.customerId,
+              combo.comboId,
+              sessionItem.itemId,
+              sessionItem.code,
+              sessionItem.name,
+              sessionItem.sortOrder,
+              sessionItem.uomId,
+              sessionItem.uomName,
+              sessionItem.groupId,
+              sessionItem.groupName,
+              sessionItem.groupOrder,
+              sessionItem.portion,
+              sessionItem.quantity,
+              sessionItem.isGeneralCostApplicable ? 1 : 0,
+              sessionItem.generalCost,
+              sessionItem.requestedCost,
+              sessionItem.approvedCost,
+              sessionItem.actualCost,
+              sessionItem.menuPlanId,
+              sessionItem.isActive ? 1 : 0,
+              sessionItem.menuPlanItemId,
+              sessionItem.actualRecipeId,
+              sessionItem.actualRecipeName,
+              sessionItem.changeRecipeId,
+              sessionItem.changeRecipeName,
+              sessionItem.portionCost,
+              sessionItem.rawMaterialSetJson,
+              sessionItem.tripsJson,
+              sessionItem.payloadJson,
+              syncedAt
+            ]
           );
         }
       }
@@ -728,10 +730,7 @@ async function replaceSessionDataCustomers({ orderDate, sessionId, unitId, custo
         )
         VALUES (?, ?, ?, ?);
       `,
-      orderDate,
-      String(sessionId),
-      unitId,
-      syncedAt
+      [orderDate, String(sessionId), unitId, syncedAt]
     );
   });
 
@@ -758,6 +757,10 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
         i.groupId,
         i.groupName,
         i.sortOrder,
+        i.actualRecipeId,
+        i.changeRecipeId,
+        i.actualRecipeName,
+        i.changeRecipeName,
         c.name AS comboName,
         c.billableItemName,
         c.sortOrder AS comboSortOrder
@@ -770,9 +773,7 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
       WHERE i.orderDate = ? AND i.sessionId = ? AND i.customerId = ?
       ORDER BY comboSortOrder ASC, i.sortOrder ASC, i.name ASC;
     `,
-    orderDate,
-    String(sessionId),
-    String(customerId)
+    [orderDate, String(sessionId), String(customerId)]
   );
 
   const itemsById = new Map();
@@ -781,6 +782,8 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     const itemId = String(row.itemId);
     const existingItem = itemsById.get(itemId);
     const comboLabel = row.billableItemName || row.comboName || null;
+    const recipeId = row.actualRecipeId || row.changeRecipeId;
+    const recipeName = row.actualRecipeName || row.changeRecipeName;
 
     if (!existingItem) {
       itemsById.set(itemId, {
@@ -792,6 +795,8 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
         uomName: row.uomName,
         groupId: row.groupId != null ? String(row.groupId) : null,
         groupName: row.groupName != null ? String(row.groupName) : null,
+        recipeId: recipeId != null ? String(recipeId) : null,
+        recipeName: recipeName != null ? String(recipeName) : null,
         comboNames: comboLabel ? [comboLabel] : [],
       });
       continue;
@@ -801,6 +806,14 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
 
     if (!existingItem.despatchItemId && row.menuPlanItemId != null) {
       existingItem.despatchItemId = String(row.menuPlanItemId);
+    }
+
+    if (!existingItem.recipeId && recipeId != null) {
+      existingItem.recipeId = String(recipeId);
+    }
+
+    if (!existingItem.recipeName && recipeName != null) {
+      existingItem.recipeName = String(recipeName);
     }
 
     if (comboLabel && !existingItem.comboNames.includes(comboLabel)) {
@@ -836,8 +849,7 @@ async function getSessionDataCustomers({ orderDate, sessionId }) {
       WHERE s.orderDate = ? AND s.sessionId = ?
       ORDER BY s.sortOrder ASC, name ASC;
     `,
-    orderDate,
-    String(sessionId)
+    [orderDate, String(sessionId)]
   );
 
   return rows.map((row) => {
@@ -874,8 +886,7 @@ async function getSessionDataSyncAt({ orderDate, sessionId }) {
       FROM ${SESSION_DATA_SYNC_TABLE}
       WHERE orderDate = ? AND sessionId = ?;
     `,
-    orderDate,
-    String(sessionId)
+    [orderDate, String(sessionId)]
   );
 
   return row?.syncedAt ?? null;

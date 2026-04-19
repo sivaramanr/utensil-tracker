@@ -1,21 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    ToastAndroid,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
 } from 'react-native';
 import {
-    loadUtensilTypesByItemGroupWithInitialSync,
-    loadUtensilTypesWithInitialSync,
-    refreshUtensilTypesByItemGroupFromApi,
-    refreshUtensilTypesFromApi,
+  loadUtensilTypesByItemGroupWithInitialSync,
+  loadUtensilTypesWithInitialSync,
+  refreshUtensilTypesByItemGroupFromApi,
+  refreshUtensilTypesFromApi,
 } from '../utils/utensilTypes';
 
 export default function UtensilTypesScreen({ navigation, route }) {
@@ -122,17 +123,6 @@ export default function UtensilTypesScreen({ navigation, route }) {
     Alert.alert('Utensil Type Options', 'Choose an action', options);
   }, [handleClearFilter, handleRefresh, selectedItemGroupId]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: selectedItemGroupName ? 'Utensil Types' : 'Utensil Types',
-      headerRight: () => (
-        <Pressable onPress={openOptionsMenu} style={styles.menuButton} hitSlop={10}>
-          <Ionicons name="ellipsis-vertical" size={22} color="#1f2937" />
-        </Pressable>
-      ),
-    });
-  }, [navigation, openOptionsMenu, selectedItemGroupName]);
-
   useEffect(() => {
     loadUtensilTypes();
   }, [loadUtensilTypes]);
@@ -143,22 +133,46 @@ export default function UtensilTypesScreen({ navigation, route }) {
       onPress={() => navigation.navigate('UtensilTypeDetail', { typeId: item.id, typeName: item.name })}
     >
       <View style={styles.rowItem}>
+        <View style={styles.rowItemGlow} />
         <Text style={styles.rowText}>{item.name}</Text>
+        <View style={styles.chevronWrap}>
+          <Ionicons name="chevron-forward" size={18} color="#475569" />
+        </View>
       </View>
     </Pressable>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Utensil Types</Text>
-      {!!selectedItemGroupName && (
-        <View style={styles.filterRow}>
-          <Text style={styles.subtitle}>{selectedItemGroupName}</Text>
-          <Pressable onPress={handleClearFilter} hitSlop={8}>
-            <Text style={styles.clearFilterText}>Clear filter</Text>
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()} hitSlop={10}>
+            <Ionicons name="chevron-back" size={20} color="#374151" />
+          </Pressable>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image source={require('../assets/images/cookerp-small.png')} style={styles.heroLogo} resizeMode="contain" />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>Master Data</Text>
+              <Text style={styles.title}>Utensils</Text>
+            </View>
+          </View>
+          <Pressable style={styles.actionButton} onPress={openOptionsMenu} hitSlop={10}>
+            <Ionicons name="ellipsis-horizontal" size={18} color="#374151" />
           </Pressable>
         </View>
-      )}
+        {!!selectedItemGroupName && (
+          <View style={styles.filterRow}>
+            <Text style={styles.subtitle}>{selectedItemGroupName}</Text>
+            <Pressable onPress={handleClearFilter} hitSlop={8}>
+              <Text style={styles.clearFilterText}>Clear filter</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -189,16 +203,98 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#fff',
+    paddingTop: 34,
+    backgroundColor: '#f4ecde',
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 120,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(203, 213, 225, 0.7)',
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 32,
+    height: 32,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  actionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(203, 213, 225, 0.7)',
   },
   title: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#111827',
-    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#6b7280',
   },
   filterRow: {
@@ -212,10 +308,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0b6bcb',
   },
-  menuButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
   loaderWrap: {
     flex: 1,
     alignItems: 'center',
@@ -226,18 +318,39 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     marginBottom: 8,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fffaf2',
+    overflow: 'hidden',
+  },
+  rowItemGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   rowText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#111827',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  chevronWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     marginTop: 24,

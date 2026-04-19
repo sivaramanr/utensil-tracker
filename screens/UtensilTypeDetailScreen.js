@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    ToastAndroid,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
 } from 'react-native';
 import { loadItemGroupsByIdsWithInitialSync, refreshItemGroupsFromApi } from '../utils/itemGroups';
 import { loadUtensilsWithInitialSync, refreshUtensilsFromApi } from '../utils/utensils';
 import {
-    loadUtensilTypeItemGroupsWithInitialSync,
-    refreshUtensilTypesFromApi,
+  loadUtensilTypeItemGroupsWithInitialSync,
+  refreshUtensilTypesFromApi,
 } from '../utils/utensilTypes';
 
 const TABS = ['Utensils', 'Item Groups'];
@@ -30,10 +32,6 @@ export default function UtensilTypeDetailScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const toastTimerRef = useRef(null);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({ title: typeName });
-  }, [navigation, typeName]);
 
   const showFetchErrorToast = useCallback(() => {
     const message = 'Unable to fetch utensil details. Please check your internet connection and try again.';
@@ -128,17 +126,6 @@ export default function UtensilTypeDetailScreen({ route, navigation }) {
     ]);
   }, [handleRefresh]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: typeName,
-      headerRight: () => (
-        <Pressable onPress={openOptionsMenu} style={styles.menuButton} hitSlop={10}>
-          <Text style={styles.menuDots}>⋯</Text>
-        </Pressable>
-      ),
-    });
-  }, [navigation, typeName, openOptionsMenu]);
-
   useEffect(() => {
     loadUtensils();
   }, [loadUtensils]);
@@ -201,6 +188,27 @@ export default function UtensilTypeDetailScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()} hitSlop={10}>
+            <Ionicons name="chevron-back" size={20} color="#374151" />
+          </Pressable>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image source={require('../assets/images/cookerp-small.png')} style={styles.heroLogo} resizeMode="contain" />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>Utensil Type</Text>
+              <Text style={styles.heroTitle} numberOfLines={1}>{typeName}</Text>
+            </View>
+          </View>
+          <Pressable style={styles.actionButton} onPress={openOptionsMenu} hitSlop={10}>
+            <Ionicons name="ellipsis-horizontal" size={18} color="#374151" />
+          </Pressable>
+        </View>
+      </View>
       <View style={styles.tabBar}>
         {TABS.map((tab, index) => (
           <Pressable
@@ -232,22 +240,113 @@ export default function UtensilTypeDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 120,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(203, 213, 225, 0.7)',
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 32,
+    height: 32,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  actionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(203, 213, 225, 0.7)',
   },
   tabBar: {
+    marginHorizontal: 16,
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 18,
+    padding: 4,
+    marginBottom: 12,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderRadius: 14,
   },
   tabActive: {
-    borderBottomColor: '#0b6bcb',
+    backgroundColor: '#ffffff',
   },
   tabText: {
     fontSize: 14,
@@ -260,15 +359,7 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     flex: 1,
-  },
-  menuButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  menuDots: {
-    fontSize: 22,
-    color: '#1f2937',
-    letterSpacing: 1,
+    paddingHorizontal: 16,
   },
   loaderWrap: {
     flex: 1,
@@ -281,17 +372,17 @@ const styles = StyleSheet.create({
   },
   rowItem: {
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     marginBottom: 8,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fffaf2',
   },
   rowText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#111827',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   emptyText: {
     marginTop: 24,

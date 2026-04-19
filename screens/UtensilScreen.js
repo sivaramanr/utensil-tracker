@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  getUtensilMovementRows,
   loadUtensilMovementSummaryWithInitialSync,
   setUtensilMovementQuantity,
 } from '../utils/utensilMovements';
@@ -19,6 +20,7 @@ export default function UtensilScreen({ route, navigation }) {
   const sessionName = route?.params?.sessionName;
   const customerName = route?.params?.customerName;
   const customerCode = route?.params?.customerCode;
+  const recipeId = route?.params?.recipeId;
   const tripNo = route?.params?.tripNo ?? 1;
   const subtitle = [sessionName, customerCode].filter(Boolean).join(' | ');
   const [utensils, setUtensils] = useState([]);
@@ -44,10 +46,43 @@ export default function UtensilScreen({ route, navigation }) {
         customerId,
         tripNo,
       };
-      const summary = await loadUtensilMovementSummaryWithInitialSync(context);
+      await loadUtensilMovementSummaryWithInitialSync(context);
+      const movementRows = await getUtensilMovementRows(context);
+      const normalizedItemId = itemId != null ? String(itemId) : null;
+      const normalizedDespatchItemId =
+        itemDespatchItemId != null ? String(itemDespatchItemId) : normalizedItemId;
+      const countsByUtensilId = {};
+
+      movementRows.forEach((row) => {
+        const rowUtensilId = row?.utensilId != null ? String(row.utensilId) : null;
+        const rowItemId = row?.itemId != null ? String(row.itemId) : null;
+        const rowDespatchItemId =
+          row?.despatchItemId != null ? String(row.despatchItemId) : rowItemId;
+
+        if (!rowUtensilId) {
+          return;
+        }
+
+        if (
+          rowItemId !== normalizedItemId &&
+          rowDespatchItemId !== normalizedDespatchItemId &&
+          rowDespatchItemId !== normalizedItemId
+        ) {
+          return;
+        }
+
+        countsByUtensilId[rowUtensilId] =
+          (countsByUtensilId[rowUtensilId] ?? 0) + (Number(row?.despatchedQuantity ?? 0) || 0);
+      });
+
+      const totalDespatched = Object.values(countsByUtensilId).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0
+      );
+
       setUtensils(matchedUtensils);
-      setCountsByUtensilId(summary.countsByUtensilId);
-      setDispatchedTotal(summary.dispatchedTotal);
+      setCountsByUtensilId(countsByUtensilId);
+      setDispatchedTotal(totalDespatched);
     } catch (error) {
       console.log('Load utensils for item error:', error);
       setUtensils([]);
@@ -56,7 +91,7 @@ export default function UtensilScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [customerId, itemGroupId, selectedDate, sessionId, tripNo]);
+  }, [customerId, itemGroupId, selectedDate, sessionId, tripNo, recipeId]);
 
   useEffect(() => {
     loadUtensils();
@@ -118,6 +153,7 @@ export default function UtensilScreen({ route, navigation }) {
 
     return (
       <View style={[styles.rowItem, { backgroundColor: colors.background }]}>
+        <View style={styles.rowItemGlow} />
         <View style={styles.rowContent}>
           <View style={[styles.utensilIconWrap, { backgroundColor: colors.icon }]}>
             <Ionicons name="basket" size={20} color="#fff" />
@@ -147,8 +183,30 @@ export default function UtensilScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{itemName}</Text>
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>{itemName}</Text>
+              <Text style={styles.title}>Utensils</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="basket-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{dispatchedTotal}</Text>
+          </View>
+        </View>
+        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -171,19 +229,101 @@ export default function UtensilScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
     padding: 16,
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 100,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
   },
   subtitle: {
     fontSize: 14,
     color: '#6b7280',
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 12,
   },
   loaderWrap: {
     paddingTop: 8,
@@ -193,10 +333,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowItem: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     marginBottom: 0,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  rowItemGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   rowContent: {
     flexDirection: 'row',
@@ -205,9 +357,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   utensilIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -216,8 +368,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#111827',
   },
   rowSubtitle: {
@@ -229,11 +381,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 18,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   counterButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -247,9 +403,9 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   counterValueWrap: {
-    minWidth: 30,
-    height: 30,
-    borderRadius: 8,
+    minWidth: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },

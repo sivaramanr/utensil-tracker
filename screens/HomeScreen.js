@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Image, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Colors } from '../constants/theme';
 import { clearTokens, getTokens } from '../utils/auth';
 import { getDashboardSummary } from '../utils/utensilMovements';
@@ -14,23 +14,18 @@ const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'utensiltracker', pat
 const LOGOUT_ENDPOINT = `https://${KEYCLOAK_DOMAIN}/realms/${REALM}/protocol/openid-connect/logout`;
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning';
-  if (hour < 18) return 'Good Afternoon';
-  return 'Good Evening';
-}
-
 function SummaryCard({ title, value, icon, color, backgroundColor }) {
   return (
     <View style={[styles.summaryCard, { backgroundColor }]}>
-      <View style={[styles.summaryIconWrap, { backgroundColor: color }]}>
-        <Ionicons name={icon} size={24} color="#fff" />
+      <View style={styles.summaryCardGlow} />
+      <View style={styles.summaryTopRow}>
+        <View style={[styles.summaryIconWrap, { backgroundColor: color }]}>
+          <Ionicons name={icon} size={24} color="#fff" />
+        </View>
+        <Ionicons name="trending-up-outline" size={18} color="rgba(15, 23, 42, 0.45)" />
       </View>
-      <View style={styles.summaryContent}>
-        <Text style={styles.summaryTitle}>{title}</Text>
-        <Text style={styles.summaryValue}>{value}</Text>
-      </View>
+      <Text style={styles.summaryTitle}>{title}</Text>
+      <Text style={styles.summaryValue}>{value}</Text>
     </View>
   );
 }
@@ -103,22 +98,6 @@ export default function HomeScreen({ navigation }) {
     ]);
   };
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: "Utensil Tracker",
-      headerLeft: () => (
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerButton} hitSlop={10}>
-            <Ionicons name="settings-outline" size={24} color="#374151" />
-          </Pressable>
-      ),
-      headerRight: () => (
-          <Pressable onPress={confirmLogout} style={styles.headerButton} hitSlop={10}>
-            <Ionicons name="log-out-outline" size={24} color={dangerColor} />
-          </Pressable>
-      )
-    });
-  }, [navigation]);
-
   const loadDashboardSummary = async () => {
     try {
       const data = await getDashboardSummary();
@@ -147,10 +126,51 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeContainer}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f4ecde" />
       <View style={styles.container}>
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Summary Cards */}
+          <View style={styles.heroCard}>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroMiniBrand}>
+                <View style={styles.heroLogoCard}>
+                  <Image
+                    source={require('../assets/images/cookerp-small.png')}
+                    style={styles.heroLogo}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text style={styles.heroMiniLabel}>Dashboard</Text>
+              </View>
+              <View style={styles.heroActions}>
+                <Pressable
+                  onPress={() => navigation.navigate('Settings')}
+                  style={styles.heroActionButton}
+                  hitSlop={10}
+                >
+                  <Ionicons name="settings-outline" size={20} color="#374151" />
+                </Pressable>
+                <Pressable onPress={confirmLogout} style={styles.heroLogoutButton} hitSlop={10}>
+                  <Ionicons name="log-out-outline" size={18} color={dangerColor} />
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.heroTitleRow}>
+              <Text style={styles.heroTitle} numberOfLines={1}>
+                Utensil Tracker
+              </Text>
+            </View>
+            <View style={styles.heroMetaRow}>
+              <View style={styles.todayChip}>
+                <Ionicons name="calendar-outline" size={14} color="#0f766e" />
+                <Text style={styles.todayChipText}>
+                  {currentDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.summarySection}>
             <SummaryCard
               title="Despatched"
@@ -175,10 +195,12 @@ export default function HomeScreen({ navigation }) {
             />
           </View>
 
-          {/* Mini Calendar */}
           <View style={styles.calendarSection}>
             <View style={styles.calendarHeader}>
-              <Text style={styles.sectionTitle}>Calendar</Text>
+              <View>
+                <Text style={styles.sectionEyebrow}>Planner</Text>
+                <Text style={styles.sectionTitle}>Calendar</Text>
+              </View>
               <View style={styles.calendarNavigation}>
                 <Pressable onPress={() => moveMonth(-1)} style={styles.calendarNav} hitSlop={8}>
                   <Ionicons name="chevron-back" size={18} color="#6b7280" />
@@ -253,92 +275,212 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4ecde',
   },
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4ecde',
   },
-  header: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingTop: 32,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
+  backgroundBlobMiddle: {
+    position: 'absolute',
+    top: 180,
+    left: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
   },
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingTop: 34,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 5,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  heroMiniBrand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroLogoCard: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 28,
+    height: 28,
+  },
+  heroMiniLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6b7280',
+    letterSpacing: 0.3,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(203, 213, 225, 0.7)',
+  },
+  heroLogoutButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: '#fff1f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+  },
+  heroTitleRow: {
+    marginTop: 14,
+  },
+  heroTitle: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '800',
+    color: '#111827',
+    letterSpacing: 0.1,
+  },
+  heroMetaRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  todayChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  todayChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   summarySection: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 12,
     marginBottom: 28,
   },
   summaryCard: {
+    width: '48%',
+    minHeight: 150,
+    borderRadius: 24,
+    padding: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.65)',
+  },
+  summaryCardGlow: {
+    position: 'absolute',
+    top: -12,
+    right: -12,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  summaryTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    justifyContent: 'space-between',
   },
   summaryIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-  },
-  summaryContent: {
-    flex: 1,
   },
   summaryTitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#64748b',
-    marginBottom: 4,
+    marginTop: 20,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
   },
   summaryValue: {
-    fontSize: 20,
-    fontWeight: '700',
+    marginTop: 8,
+    fontSize: 30,
+    fontWeight: '800',
     color: '#0f172a',
+  },
+  sectionEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '800',
     color: '#0f172a',
-    marginBottom: 12,
   },
   calendarSection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#fffdf9',
+    borderRadius: 28,
+    padding: 18,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 3,
   },
   calendarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   calendarNavigation: {
@@ -347,17 +489,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   calendarMonth: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    minWidth: 80,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    minWidth: 96,
     textAlign: 'center',
   },
   calendarNav: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -393,16 +537,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   miniCalendarDayCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#f8fafc',
   },
   miniCalendarDayText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#475569',
   },
   fab: {

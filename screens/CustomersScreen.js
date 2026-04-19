@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -196,18 +197,27 @@ export default function CustomersScreen({ navigation, route }) {
         }
       >
         <View style={[styles.customerCard, { backgroundColor: colors.background }]}>
+          <View style={styles.customerCardGlow} />
           <View style={[styles.customerIconWrap, { backgroundColor: colors.icon }]}>
             <Ionicons name="business" size={24} color="#fff" />
           </View>
           <View style={styles.customerContent}>
-            <Text style={styles.customerCode} numberOfLines={1}>
-              {item.code || 'N/A'}
-            </Text>
+            <View style={styles.customerTopRow}>
+              <Text style={styles.customerCode} numberOfLines={1}>
+                {item.code || 'N/A'}
+              </Text>
+              <View style={styles.customerCodeBadge}>
+                <Text style={styles.customerCodeBadgeText}>Customer</Text>
+              </View>
+            </View>
             <Text style={styles.customerNameSubtitle} numberOfLines={2}>
               {item.name}
             </Text>
+            {/* <Text style={styles.customerCaption}>Open movements and utensil tracking</Text> */}
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
+          <View style={styles.chevronWrap}>
+            <Ionicons name="chevron-forward" size={18} color="#475569" />
+          </View>
         </View>
       </Pressable>
     );
@@ -230,8 +240,30 @@ export default function CustomersScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{titleText}</Text>
-      {!!subtitleText && <Text style={styles.subtitle}>{subtitleText}</Text>}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>{titleText}</Text>
+              <Text style={styles.title}>Customers</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="people-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{customers.length}</Text>
+          </View>
+        </View>
+        {!!subtitleText && <Text style={styles.subtitle}>{subtitleText}</Text>}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -263,18 +295,100 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 100,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
-    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#6b7280',
-    marginBottom: 12,
+    marginTop: 12,
   },
   menuButton: {
     paddingHorizontal: 6,
@@ -293,14 +407,26 @@ const styles = StyleSheet.create({
   customerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  customerCardGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
   customerIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -308,16 +434,47 @@ const styles = StyleSheet.create({
   customerContent: {
     flex: 1,
   },
+  customerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   customerCode: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 4,
+    flex: 1,
+  },
+  customerCodeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+  },
+  customerCodeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
   },
   customerNameSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#64748b',
+    marginTop: 6,
+  },
+  customerCaption: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 8,
+  },
+  chevronWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     borderWidth: 1,

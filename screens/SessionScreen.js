@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   ToastAndroid,
-  View,
+  View
 } from 'react-native';
 import { formatIsoDateForDisplay } from '../utils/date';
 import { loadSessionsWithInitialSync, refreshSessionsFromApi } from '../utils/sessions';
@@ -107,31 +107,31 @@ export default function SessionScreen({ navigation, route }) {
     }
   }, [showFetchErrorToast]);
 
-  const openOptionsMenu = useCallback(() => {
-    Alert.alert('Session Options', 'Choose an action', [
-      {
-        text: 'Refresh',
-        onPress: () => {
-          handleRefresh();
-        },
-      },
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-    ]);
-  }, [handleRefresh]);
+  // const openOptionsMenu = useCallback(() => {
+  //   Alert.alert('Session Options', 'Choose an action', [
+  //     {
+  //       text: 'Refresh',
+  //       onPress: () => {
+  //         handleRefresh();
+  //       },
+  //     },
+  //     {
+  //       text: 'Cancel',
+  //       style: 'cancel',
+  //     },
+  //   ]);
+  // }, [handleRefresh]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: 'Sessions',
-      headerRight: () => (
-        <Pressable onPress={openOptionsMenu} style={styles.menuButton} hitSlop={10}>
-          <Ionicons name="ellipsis-vertical" size={22} color="#1f2937" />
-        </Pressable>
-      ),
-    });
-  }, [navigation, openOptionsMenu]);
+  // useLayoutEffect(() => {
+  //   navigation.setOptions({
+  //     title: 'Sessions',
+  //     headerRight: () => (
+  //       <Pressable onPress={openOptionsMenu} style={styles.menuButton} hitSlop={10}>
+  //         <Ionicons name="ellipsis-vertical" size={22} color="#1f2937" />
+  //       </Pressable>
+  //     ),
+  //   });
+  // }, [navigation, openOptionsMenu]);
 
   // Load from SQLite first; initial API sync happens only when table is empty.
   useEffect(() => {
@@ -168,30 +168,70 @@ export default function SessionScreen({ navigation, route }) {
         style={[styles.sessionCard, { backgroundColor: colors.background, opacity }]} 
         onPress={handleSessionPress}
       >
+        <View style={styles.sessionCardGlow} />
         <View style={[styles.sessionIconWrap, { backgroundColor: colors.icon }]}>
           <Ionicons name="fast-food" size={24} color="#fff" />
         </View>
         <View style={styles.sessionContent}>
-          <Text style={styles.sessionCardName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text style={styles.sessionStatus}>
-            {active ? 'Active' : 'Inactive'}
-          </Text>
+          <View style={styles.sessionTitleRow}>
+            <Text style={styles.sessionCardName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <View
+              style={[
+                styles.sessionStatusBadge,
+                active ? styles.sessionStatusBadgeActive : styles.sessionStatusBadgeInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.sessionStatusText,
+                  active ? styles.sessionStatusTextActive : styles.sessionStatusTextInactive,
+                ]}
+              >
+                {active ? 'Active' : 'Inactive'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.sessionCaption}>Open customer list for this session</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#d1d5db" />
+        <View style={styles.chevronWrap}>
+          <Ionicons name="chevron-forward" size={18} color="#475569" />
+        </View>
       </Pressable>
     );
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{displayedDate}</Text>
-      {currentDate && (
-        <Text style={styles.subtitle}>
-          {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
-        </Text>
-      )}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>{displayedDate}</Text>
+              <Text style={styles.title}>Sessions</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="calendar-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{sessions.length}</Text>
+          </View>
+        </View>
+        {currentDate && (
+          <Text style={styles.subtitle}>
+            {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+          </Text>
+        )}
+      </View>
       {loading ? (
         <View style={styles.loaderWrap}>
           <ActivityIndicator size="large" />
@@ -222,18 +262,100 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 100,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
-    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#6b7280',
-    marginBottom: 12,
+    marginTop: 12,
   },
   menuButton: {
     paddingHorizontal: 6,
@@ -251,14 +373,26 @@ const styles = StyleSheet.create({
   sessionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  sessionCardGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
   sessionIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -266,16 +400,51 @@ const styles = StyleSheet.create({
   sessionContent: {
     flex: 1,
   },
-  sessionCardName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0f172a',
-    marginBottom: 4,
+  sessionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  sessionStatus: {
-    fontSize: 12,
-    fontWeight: '500',
+  sessionCardName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+  },
+  sessionStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  sessionStatusBadgeActive: {
+    backgroundColor: '#dcfce7',
+  },
+  sessionStatusBadgeInactive: {
+    backgroundColor: '#e5e7eb',
+  },
+  sessionStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sessionStatusTextActive: {
+    color: '#166534',
+  },
+  sessionStatusTextInactive: {
+    color: '#475569',
+  },
+  sessionCaption: {
+    fontSize: 13,
     color: '#64748b',
+    marginTop: 8,
+  },
+  chevronWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     marginTop: 24,

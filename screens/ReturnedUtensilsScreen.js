@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { formatIsoDateForDisplay } from '../utils/date';
 import {
-    approveReturnedUtensilMovements,
-    getUtensilMovementRows,
-    loadUtensilMovementSummaryWithInitialSync,
-    refreshUtensilMovementsFromApi,
-    submitReturnedUtensilMovements,
-    updateReturnedQuantity,
-    utensilMovementSyncStatus,
+  approveReturnedUtensilMovements,
+  getUtensilMovementRows,
+  loadUtensilMovementSummaryWithInitialSync,
+  refreshUtensilMovementsFromApi,
+  submitReturnedUtensilMovements,
+  updateReturnedQuantity,
+  utensilMovementSyncStatus,
 } from '../utils/utensilMovements';
 import { getUtensilsByIds } from '../utils/utensils';
 
@@ -53,7 +53,6 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
   const [isApproverMode, setIsApproverMode] = useState(false);
   const [selectedForApproval, setSelectedForApproval] = useState(new Set());
   const [quantities, setQuantities] = useState({});
-  const [utensilItemMapping, setUtensilItemMapping] = useState({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -79,16 +78,13 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
         );
       }
 
-      const rowsByUtensilId = new Map();
       const quantitiesMap = {};
-      const itemMappingMap = {};
+      const validRows = [];
 
       movementRows.forEach((row) => {
         const utensilId = row?.utensilId != null ? String(row.utensilId) : null;
-        const itemId = row?.itemId != null ? String(row.itemId) : null;
         const returnedQuantity = Number(row?.returnedQuantity ?? 0) || 0;
         const despatchedQuantity = Number(row?.despatchedQuantity ?? 0) || 0;
-        const isChanged = row?.syncStatus === utensilMovementSyncStatus.SERVER_MODIFIED;
         const isLocalOnly = row?.syncStatus === utensilMovementSyncStatus.LOCAL_ONLY;
 
         if (!utensilId) {
@@ -100,95 +96,55 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
           return;
         }
 
-        quantitiesMap[utensilId] = returnedQuantity;
-        if (!itemMappingMap[utensilId]) {
-          // Use itemId if available, otherwise fall back to despatchItemId
-          const itemIdToUse = itemId || row?.despatchItemId;
-          if (itemIdToUse) {
-            itemMappingMap[utensilId] = String(itemIdToUse);
-          }
-        }
-
-        const existingRow = rowsByUtensilId.get(utensilId);
-
-        if (!existingRow) {
-          rowsByUtensilId.set(utensilId, {
-            id: utensilId,
-            returnedCount: returnedQuantity,
-            despatchedCount: despatchedQuantity,
-            syncStatus: row?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-            returnApproved: Boolean(row?.returnApproved),
-          });
-          return;
-        }
-
-        existingRow.returnedCount += returnedQuantity;
-        existingRow.despatchedCount += despatchedQuantity;
-
-        if (isLocalOnly) {
-          existingRow.syncStatus = utensilMovementSyncStatus.LOCAL_ONLY;
-        } else if (
-          isChanged &&
-          existingRow.syncStatus !== utensilMovementSyncStatus.LOCAL_ONLY
-        ) {
-          existingRow.syncStatus = utensilMovementSyncStatus.SERVER_MODIFIED;
-        }
-
-        // If any row is approved, mark the aggregated row as approved
-        if (row?.returnApproved) {
-          existingRow.returnApproved = true;
-        }
+        validRows.push(row);
       });
 
-      const ids = Array.from(rowsByUtensilId.keys());
-
-      if (ids.length === 0) {
+      if (validRows.length === 0) {
         setRows([]);
         setTotal(0);
         setQuantities({});
         return;
       }
 
-      const utensils = await getUtensilsByIds(ids);
+      const utensilIds = validRows.map((row) => String(row.utensilId));
+      const utensils = await getUtensilsByIds(utensilIds);
       const utensilMap = {};
       utensils.forEach((u) => {
         utensilMap[u.id] = u;
       });
 
-      const resolved = ids.map((id) => {
-        const aggregatedRow = rowsByUtensilId.get(id);
+      const resolved = validRows.map((row, index) => {
+        const utensilId = String(row.utensilId);
+        const rowId = row?.id != null ? String(row.id) : `${utensilId}-${index}`;
+        const returnedCount = Number(row?.returnedQuantity ?? 0);
+
+        quantitiesMap[rowId] = returnedCount;
 
         return {
-          id,
-          name: utensilMap[id]?.name ?? `Utensil ${id}`,
-          utensilTypeName: utensilMap[id]?.utensilTypeName ?? null,
-          returnedCount: Number(aggregatedRow?.returnedCount ?? 0),
-          despatchedCount: Number(aggregatedRow?.despatchedCount ?? 0),
-          syncStatus:
-            aggregatedRow?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
-          returnApproved: Boolean(aggregatedRow?.returnApproved),
+          id: rowId,
+          itemId: row?.itemId != null ? String(row.itemId) : null,
+          despatchItemId: row?.despatchItemId != null ? String(row.despatchItemId) : null,
+          utensilId,
+          name: utensilMap[utensilId]?.name ?? `Utensil ${utensilId}`,
+          utensilTypeName: utensilMap[utensilId]?.utensilTypeName ?? null,
+          returnedCount,
+          despatchedCount: Number(row?.despatchedQuantity ?? 0),
+          syncStatus: row?.syncStatus ?? utensilMovementSyncStatus.SERVER_UNCHANGED,
+          returnApproved: Boolean(row?.returnApproved),
         };
       });
 
       resolved.sort((a, b) => a.name.localeCompare(b.name));
 
       const grandTotal = resolved.reduce((sum, r) => sum + r.returnedCount, 0);
-      console.log('[ReturnedUtensilsScreen] loadData completed:', { 
-        rowCount: resolved.length,
-        grandTotal,
-        itemMappingMap 
-      });
-      
       setRows(resolved);
       setTotal(grandTotal);
       setQuantities(quantitiesMap);
-      setUtensilItemMapping(itemMappingMap);
     } catch (error) {
       console.log('Load returned utensils error:', error);
       setRows([]);
       setTotal(0);
       setQuantities({});
-      setUtensilItemMapping({});
     } finally {
       setLoading(false);
     }
@@ -260,8 +216,15 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
         customerId,
         tripNo,
       };
-      const selectedUtensilIds = Array.from(selectedForApproval);
-      const result = await approveReturnedUtensilMovements(context, selectedUtensilIds);
+      const selectedMovements = rows
+        .filter((row) => selectedForApproval.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          utensilId: row.utensilId,
+          itemId: row.itemId,
+          despatchItemId: row.despatchItemId,
+        }));
+      const result = await approveReturnedUtensilMovements(context, selectedMovements);
 
       if (result.approvedCount === 0) {
         Alert.alert('Approve', 'No utensil movements to approve.');
@@ -304,15 +267,12 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
   }, []);
 
   const updateQuantity = useCallback(
-    async (utensilId, newQuantity) => {
+    async (rowId, newQuantity) => {
       if (newQuantity < 0) return;
-
-      console.log('[ReturnedUtensilsScreen] updateQuantity called:', { utensilId, newQuantity });
-      console.log('[ReturnedUtensilsScreen] utensilItemMapping:', utensilItemMapping);
 
       setQuantities((prev) => ({
         ...prev,
-        [utensilId]: newQuantity,
+        [rowId]: newQuantity,
       }));
 
       // Save to database
@@ -323,20 +283,17 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
           customerId,
           tripNo,
         };
-        const itemId = utensilItemMapping[utensilId];
-        console.log('[ReturnedUtensilsScreen] Resolved itemId:', itemId);
-        
-        if (itemId) {
-          console.log('[ReturnedUtensilsScreen] Calling updateReturnedQuantity');
-          await updateReturnedQuantity(context, utensilId, itemId, newQuantity);
-        } else {
-          console.log('[ReturnedUtensilsScreen] WARNING: itemId not found in mapping for utensilId:', utensilId);
+        const row = rows.find((entry) => entry.id === rowId);
+        const itemId = row?.itemId ?? row?.despatchItemId ?? null;
+
+        if (row?.utensilId && itemId) {
+          await updateReturnedQuantity(context, row.utensilId, itemId, newQuantity);
         }
       } catch (error) {
         console.log('Update returned quantity error:', error);
       }
     },
-    [customerId, selectedDate, sessionId, tripNo, utensilItemMapping]
+    [customerId, rows, selectedDate, sessionId, tripNo]
   );
 
   const getRowColor = (index) => {
@@ -364,6 +321,7 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
     return (
       <Pressable onPress={() => shouldShowCheckbox && toggleItemSelection(item.id)}>
         <View style={[styles.rowItem, { backgroundColor: colors.background }, isApproved ? styles.rowItemApproved : null]}>
+          <View style={styles.rowItemGlow} />
           <View style={styles.rowContent}>
             {shouldShowCheckbox && (
               <View style={styles.checkboxWrap}>
@@ -445,8 +403,30 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroBrandWrap}>
+            <View style={styles.heroLogoCard}>
+              <Image
+                source={require('../assets/images/cookerp-small.png')}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>Return Approval</Text>
+              <Text style={styles.title}>{title}</Text>
+            </View>
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name="refresh-outline" size={14} color="#0f766e" />
+            <Text style={styles.heroBadgeText}>{rows.length}</Text>
+          </View>
+        </View>
+        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
 
       {loading ? (
         <View style={styles.loaderWrap}>
@@ -466,7 +446,7 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
         />
       )}
 
-      {!loading && rows.length > 0 && (
+      {/* {!loading && rows.length > 0 && (
         <View style={styles.totalBar}>
           <Text style={styles.totalLabel}>
             {isApproverMode ? 'Total Approved' : 'Total Returned'}
@@ -475,7 +455,7 @@ export default function ReturnedUtensilsScreen({ route, navigation }) {
             {rows.reduce((sum, row) => sum + (quantities[row.id] ?? row.returnedCount), 0)}
           </Text>
         </View>
-      )}
+      )} */}
 
       {!loading && (
         <View style={styles.modeContainer}>
@@ -526,18 +506,101 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#f4ecde',
+    paddingTop: 34,
+  },
+  backgroundBlobTop: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#f59e0b',
+    opacity: 0.12,
+  },
+  backgroundBlobBottom: {
+    position: 'absolute',
+    bottom: 120,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: '#0f766e',
+    opacity: 0.08,
+  },
+  heroCard: {
+    backgroundColor: '#fffaf2',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.10)',
+    shadowColor: '#7c2d12',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroBrandWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  heroLogoCard: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroLogo: {
+    width: 38,
+    height: 38,
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#e6fffb',
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#111827',
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: 12,
   },
   loaderWrap: {
     flex: 1,
@@ -549,16 +612,25 @@ const styles = StyleSheet.create({
   },
   rowItem: {
     marginBottom: 12,
-    borderRadius: 12,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  rowItemGlow: {
+    position: 'absolute',
+    top: -18,
+    right: -18,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   rowContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
   },
   checkboxWrap: {
     paddingRight: 8,
@@ -567,7 +639,7 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#d1d5db',
     justifyContent: 'center',
@@ -579,9 +651,9 @@ const styles = StyleSheet.create({
     borderColor: '#3b82f6',
   },
   rowIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -595,8 +667,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#111827',
     flex: 1,
   },
@@ -653,8 +725,8 @@ const styles = StyleSheet.create({
   quantityControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    borderRadius: 16,
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 8,
@@ -685,11 +757,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#eff6ff',
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 24,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: '#bfdbfe',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 3,
   },
   totalLabel: {
     fontSize: 14,
@@ -697,15 +774,15 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
   },
   totalValue: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#1d4ed8',
   },
   submitButton: {
     marginTop: 12,
     backgroundColor: '#1d4ed8',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
   },
   submitButtonText: {
@@ -728,9 +805,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 18,
   },
   modeLabel: {
     fontSize: 14,

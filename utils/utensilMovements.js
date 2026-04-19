@@ -27,12 +27,13 @@ function normalizeTripNo(tripNo) {
   return Number.isInteger(parsedTripNo) && parsedTripNo > 0 ? parsedTripNo : DEFAULT_TRIP_NO;
 }
 
-function buildContextKey({ orderDate, sessionId, customerId, tripNo }) {
+function buildContextKey({ orderDate, sessionId, customerId, tripNo, recipeId }) {
   return [
     orderDate ?? 'unknown-date',
     String(sessionId ?? 'unknown-session'),
     String(customerId ?? 'unknown-customer'),
     String(normalizeTripNo(tripNo)),
+    recipeId ?? 'unknown-recipe',
   ].join('|');
 }
 
@@ -42,6 +43,7 @@ function normalizeMovementContext(context = {}) {
     sessionId: context.sessionId != null ? String(context.sessionId) : null,
     customerId: context.customerId != null ? String(context.customerId) : null,
     tripNo: normalizeTripNo(context.tripNo),
+    recipeId: context.recipeId != null ? String(context.recipeId) : null,
   };
 }
 
@@ -67,6 +69,7 @@ function normalizeApiMovement(payloadItem, syncedAt, contextKey, context) {
     sessionId: context.sessionId,
     customerId: context.customerId,
     tripNo: context.tripNo,
+    recipeId: context.recipeId,
     despatchItemId: item?.despatchItemId != null ? String(item.despatchItemId) : null,
     itemId: item?.itemId != null ? String(item.itemId) : null,
     utensilId: item?.utensilId != null ? String(item.utensilId) : null,
@@ -101,40 +104,100 @@ function normalizeApiMovement(payloadItem, syncedAt, contextKey, context) {
 
 async function getContextSyncAt(context) {
   const db = await getDatabase();
-  const row = await db.getFirstAsync(
-    `
-      SELECT syncedAt
-      FROM ${UTENSIL_MOVEMENT_SYNC_TABLE}
-      WHERE contextKey = ?;
-    `,
-    buildContextKey(context)
-  );
-
-  return row?.syncedAt ?? null;
+  const normalizedContext = normalizeMovementContext(context);
+  
+  // If recipeId is provided, use exact contextKey match
+  // If recipeId is not provided, match ANY sync for this base context
+  if (normalizedContext.recipeId && normalizedContext.recipeId !== 'unknown-recipe') {
+    const row = await db.getFirstAsync(
+      `
+        SELECT syncedAt
+        FROM ${UTENSIL_MOVEMENT_SYNC_TABLE}
+        WHERE contextKey = ?;
+      `,
+      [buildContextKey(normalizedContext)]
+    );
+    return row?.syncedAt ?? null;
+  } else {
+    // Query by base context (date|session|customer|trip) without recipe filter
+    const basePattern = [
+      normalizedContext.orderDate ?? 'unknown-date',
+      String(normalizedContext.sessionId ?? 'unknown-session'),
+      String(normalizedContext.customerId ?? 'unknown-customer'),
+      String(normalizeTripNo(normalizedContext.tripNo)),
+    ].join('|') + '|%';
+    
+    const row = await db.getFirstAsync(
+      `
+        SELECT syncedAt
+        FROM ${UTENSIL_MOVEMENT_SYNC_TABLE}
+        WHERE contextKey LIKE ?
+        ORDER BY syncedAt DESC
+        LIMIT 1;
+      `,
+      [basePattern]
+    );
+    return row?.syncedAt ?? null;
+  }
 }
 
 async function getContextRows(context) {
   const db = await getDatabase();
-  return db.getAllAsync(
-    `
-      SELECT
-        id,
-        despatchItemId,
-        itemId,
-        utensilId,
-        despatchedQuantity,
-        returnedQuantity,
-        isDraft,
-        syncStatus,
-        despatchApproved,
-        returnApproved,
-        despatchApprovedBy,
-        returnApprovedBy
-      FROM ${UTENSIL_MOVEMENTS_TABLE}
-      WHERE contextKey = ?
-    `,
-    buildContextKey(context)
-  );
+  const normalizedContext = normalizeMovementContext(context);
+  
+  // If recipeId is provided, use exact contextKey match
+  // If recipeId is not provided, match movements by date/session/customer/trip regardless of recipe
+  if (normalizedContext.recipeId && normalizedContext.recipeId !== 'unknown-recipe') {
+    return db.getAllAsync(
+      `
+        SELECT
+          id,
+          despatchItemId,
+          itemId,
+          utensilId,
+          despatchedQuantity,
+          returnedQuantity,
+          isDraft,
+          syncStatus,
+          despatchApproved,
+          returnApproved,
+          despatchApprovedBy,
+          returnApprovedBy
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey = ?
+      `,
+      [buildContextKey(normalizedContext)]
+    );
+  } else {
+    // Query by base context (date|session|customer|trip) without recipe filter
+    const basePattern = [
+      normalizedContext.orderDate ?? 'unknown-date',
+      String(normalizedContext.sessionId ?? 'unknown-session'),
+      String(normalizedContext.customerId ?? 'unknown-customer'),
+      String(normalizeTripNo(normalizedContext.tripNo)),
+    ].join('|') + '|%';
+    
+    return db.getAllAsync(
+      `
+        SELECT
+          id,
+          despatchItemId,
+          itemId,
+          utensilId,
+          despatchedQuantity,
+          returnedQuantity,
+          isDraft,
+          syncStatus,
+          despatchApproved,
+          returnApproved,
+          despatchApprovedBy,
+          returnApprovedBy
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey LIKE ?
+      `,
+      [basePattern]
+    );
+  }
 }
 
 function buildEffectiveMovementRows(rows) {
@@ -347,7 +410,7 @@ async function replaceContextMovementsFromApi({ context, contextKey, syncedAt, m
         DELETE FROM ${UTENSIL_MOVEMENTS_TABLE}
         WHERE contextKey = ? AND isDraft = 0;
       `,
-      contextKey
+      [contextKey]
     );
 
     for (const movement of movements) {
@@ -360,6 +423,7 @@ async function replaceContextMovementsFromApi({ context, contextKey, syncedAt, m
             sessionId,
             customerId,
             tripNo,
+            recipeId,
             despatchItemId,
             itemId,
             utensilId,
@@ -383,37 +447,40 @@ async function replaceContextMovementsFromApi({ context, contextKey, syncedAt, m
             payloadJson,
             syncedAt,
             localUpdatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         `,
-        movement.id,
-        movement.contextKey,
-        movement.orderDate,
-        movement.sessionId,
-        movement.customerId,
-        movement.tripNo,
-        movement.despatchItemId,
-        movement.itemId,
-        movement.utensilId,
-        movement.despatchedQuantity,
-        movement.despatchApproved ? 1 : 0,
-        movement.returnedQuantity,
-        movement.returnApproved ? 1 : 0,
-        movement.despatchReason,
-        movement.returnReason,
-        movement.conditionOnDespatch,
-        movement.conditionOnReturn,
-        movement.comments,
-        movement.dispatchedAt,
-        movement.returnedAt,
-        movement.dispatchedBy,
-        movement.despatchApprovedBy,
-        movement.returnedBy,
-        movement.returnApprovedBy,
-        movement.isDraft ? 1 : 0,
-        movement.syncStatus,
-        movement.payloadJson,
-        movement.syncedAt,
-        movement.localUpdatedAt
+        [
+          movement.id,
+          movement.contextKey,
+          movement.orderDate,
+          movement.sessionId,
+          movement.customerId,
+          movement.tripNo,
+          movement.recipeId,
+          movement.despatchItemId,
+          movement.itemId,
+          movement.utensilId,
+          movement.despatchedQuantity,
+          movement.despatchApproved ? 1 : 0,
+          movement.returnedQuantity,
+          movement.returnApproved ? 1 : 0,
+          movement.despatchReason,
+          movement.returnReason,
+          movement.conditionOnDespatch,
+          movement.conditionOnReturn,
+          movement.comments,
+          movement.dispatchedAt,
+          movement.returnedAt,
+          movement.dispatchedBy,
+          movement.despatchApprovedBy,
+          movement.returnedBy,
+          movement.returnApprovedBy,
+          movement.isDraft ? 1 : 0,
+          movement.syncStatus,
+          movement.payloadJson,
+          movement.syncedAt,
+          movement.localUpdatedAt
+        ]
       );
     }
 
@@ -425,15 +492,11 @@ async function replaceContextMovementsFromApi({ context, contextKey, syncedAt, m
           sessionId,
           customerId,
           tripNo,
+          recipeId,
           syncedAt
-        ) VALUES (?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
       `,
-      contextKey,
-      normalizedContext.orderDate,
-      normalizedContext.sessionId,
-      normalizedContext.customerId,
-      normalizedContext.tripNo,
-      syncedAt
+      [contextKey, normalizedContext.orderDate, normalizedContext.sessionId, normalizedContext.customerId, normalizedContext.tripNo, normalizedContext.recipeId, syncedAt]
     );
   });
 }
@@ -445,6 +508,7 @@ function createDraftId(context, utensilId, itemId) {
     context.sessionId ?? 'unknown-session',
     context.customerId ?? 'unknown-customer',
     context.tripNo ?? DEFAULT_TRIP_NO,
+    context.recipeId ?? 'unknown-recipe',
     itemId ?? 'unknown-item',
     utensilId,
   ].join('|');
@@ -499,35 +563,37 @@ async function upsertDraftMovement({ context, utensilId, itemId, despatchItemId,
         localUpdatedAt
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `,
-    draftId,
-    contextKey,
-    normalizedContext.orderDate,
-    normalizedContext.sessionId,
-    normalizedContext.customerId,
-    normalizedContext.tripNo,
-    normalizedDespatchItemId,
-    normalizedItemId,
-    utensilId,
-    quantity,
-    0,
-    0,
-    0,
-    null,
-    null,
-    null,
-    null,
-    null,
-    now,
-    null,
-    null,
-    null,
-    null,
-    null,
-    1,
-    syncStatus,
-    null,
-    null,
-    nowIso
+    [
+      draftId,
+      contextKey,
+      normalizedContext.orderDate,
+      normalizedContext.sessionId,
+      normalizedContext.customerId,
+      normalizedContext.tripNo,
+      normalizedDespatchItemId,
+      normalizedItemId,
+      utensilId,
+      quantity,
+      0,
+      0,
+      0,
+      null,
+      null,
+      null,
+      null,
+      null,
+      now,
+      null,
+      null,
+      null,
+      null,
+      null,
+      1,
+      syncStatus,
+      null,
+      null,
+      nowIso
+    ]
   );
 }
 
@@ -538,9 +604,7 @@ async function deleteDraftMovement(context, utensilId, itemId) {
       DELETE FROM ${UTENSIL_MOVEMENTS_TABLE}
       WHERE contextKey = ? AND utensilId = ? AND itemId = ? AND isDraft = 1;
     `,
-    buildContextKey(context),
-    String(utensilId),
-    String(itemId)
+    [buildContextKey(context), String(utensilId), String(itemId)]
   );
 }
 
@@ -548,6 +612,21 @@ export async function ensureUtensilMovementTables() {
   if (!ensureUtensilMovementTablesPromise) {
     ensureUtensilMovementTablesPromise = (async () => {
       const db = await getDatabase();
+
+      // Migration: Drop and recreate tables if recipeId column is missing
+      try {
+        const columns = await db.getAllAsync(
+          `PRAGMA table_info(${UTENSIL_MOVEMENT_SYNC_TABLE})`
+        );
+        const hasRecipeId = columns && columns.some((col) => col.name === 'recipeId');
+        if (!hasRecipeId) {
+          console.log('Migrating UtensilMovement tables to add recipeId column');
+          await db.runAsync(`DROP TABLE IF EXISTS ${UTENSIL_MOVEMENTS_TABLE};`);
+          await db.runAsync(`DROP TABLE IF EXISTS ${UTENSIL_MOVEMENT_SYNC_TABLE};`);
+        }
+      } catch (error) {
+        console.log('Migration check error (table may not exist):', error);
+      }
 
       await db.runAsync(
         `
@@ -558,6 +637,7 @@ export async function ensureUtensilMovementTables() {
             sessionId TEXT NOT NULL,
             customerId TEXT NOT NULL,
             tripNo INTEGER NOT NULL,
+            recipeId TEXT,
             despatchItemId TEXT,
             itemId TEXT,
             utensilId TEXT NOT NULL,
@@ -593,6 +673,7 @@ export async function ensureUtensilMovementTables() {
             sessionId TEXT NOT NULL,
             customerId TEXT NOT NULL,
             tripNo INTEGER NOT NULL,
+            recipeId TEXT,
             syncedAt TEXT NOT NULL
           );
         `
@@ -650,18 +731,57 @@ export async function getUtensilMovementRows(context) {
 
 async function getServerIdForMovement(context, utensilId, itemId) {
   const db = await getDatabase();
-  const row = await db.getFirstAsync(
-    `
-      SELECT id
-      FROM ${UTENSIL_MOVEMENTS_TABLE}
-      WHERE contextKey = ? AND utensilId = ? AND itemId = ? AND isDraft = 0;
-    `,
-    buildContextKey(context),
-    String(utensilId),
-    String(itemId)
-  );
+  const normalizedContext = normalizeMovementContext(context);
+  const normalizedUtensilId = String(utensilId);
+  const normalizedItemId = String(itemId);
+  
+  // If recipeId is provided, use exact contextKey match
+  // If not, use LIKE matching to find movements regardless of recipe
+  if (normalizedContext.recipeId && normalizedContext.recipeId !== 'unknown-recipe') {
+    const row = await db.getFirstAsync(
+      `
+        SELECT id
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey = ? AND utensilId = ? AND itemId = ? AND isDraft = 0;
+      `,
+      [buildContextKey(normalizedContext), normalizedUtensilId, normalizedItemId]
+    );
+    return row?.id ?? null;
+  } else {
+    // Query by base context (date|session|customer|trip) without recipe filter
+    const basePattern = [
+      normalizedContext.orderDate ?? 'unknown-date',
+      String(normalizedContext.sessionId ?? 'unknown-session'),
+      String(normalizedContext.customerId ?? 'unknown-customer'),
+      String(normalizeTripNo(normalizedContext.tripNo)),
+    ].join('|') + '|%';
+    
+    const row = await db.getFirstAsync(
+      `
+        SELECT id
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey LIKE ? AND utensilId = ? AND itemId = ? AND isDraft = 0;
+      `,
+      [basePattern, normalizedUtensilId, normalizedItemId]
+    );
+    return row?.id ?? null;
+  }
+}
 
-  return row?.id ?? null;
+function buildMovementSelectionKey(row) {
+  const utensilId = row?.utensilId != null ? String(row.utensilId) : null;
+  const itemReference =
+    row?.itemId != null
+      ? String(row.itemId)
+      : row?.despatchItemId != null
+        ? String(row.despatchItemId)
+        : null;
+
+  if (!utensilId || !itemReference) {
+    return null;
+  }
+
+  return `${itemReference}|${utensilId}`;
 }
 
 export async function submitCreatedUtensilMovements(context) {
@@ -741,6 +861,28 @@ export async function submitCreatedUtensilMovements(context) {
 
     await ensureAuthorizedResponse(response, 'Update utensil movement API');
     changedSubmittedCount = changedPayload.length;
+  }
+
+  // Update database to mark movements as submitted
+  const db = await getDatabase();
+  if (createdRows.length > 0) {
+    const createUpdatePromises = createdRows.map((row) =>
+      db.runAsync(
+        `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET isDraft = 0, syncStatus = ? WHERE id = ?`,
+        [SYNC_STATUS_SERVER_UNCHANGED, row.id]
+      )
+    );
+    await Promise.all(createUpdatePromises);
+  }
+
+  if (changedRows.length > 0) {
+    const changeUpdatePromises = changedRows.map((row) =>
+      db.runAsync(
+        `UPDATE ${UTENSIL_MOVEMENTS_TABLE} SET syncStatus = ? WHERE id = ?`,
+        [SYNC_STATUS_SERVER_UNCHANGED, row.id]
+      )
+    );
+    await Promise.all(changeUpdatePromises);
   }
 
   return {
@@ -884,7 +1026,7 @@ export async function clearContextMovements(context) {
         DELETE FROM ${UTENSIL_MOVEMENTS_TABLE}
         WHERE contextKey = ?;
       `,
-      contextKey
+      [contextKey]
     );
 
     await db.runAsync(
@@ -892,7 +1034,7 @@ export async function clearContextMovements(context) {
         DELETE FROM ${UTENSIL_MOVEMENT_SYNC_TABLE}
         WHERE contextKey = ?;
       `,
-      contextKey
+      [contextKey]
     );
   });
 }
@@ -932,7 +1074,7 @@ export async function getDashboardSummary() {
   };
 }
 
-export async function approveDespatchedUtensilMovements(context, selectedUtensilIds = null) {
+export async function approveDespatchedUtensilMovements(context, selectedMovements = null) {
   await ensureUtensilMovementTables();
   const normalizedContext = normalizeMovementContext(context);
   const rows = await getUtensilMovementRows(normalizedContext);
@@ -942,14 +1084,15 @@ export async function approveDespatchedUtensilMovements(context, selectedUtensil
     (row) =>
       row?.syncStatus === SYNC_STATUS_SERVER_UNCHANGED &&
       Number(row?.despatchedQuantity ?? 0) > 0 &&
-      row?.utensilId &&
-      row?.itemId
+      row?.utensilId
   );
 
-  // If selectedUtensilIds is provided, filter to only those items
-  if (selectedUtensilIds && selectedUtensilIds.length > 0) {
-    const selectedSet = new Set(selectedUtensilIds.map(String));
-    submittedRows = submittedRows.filter((row) => selectedSet.has(String(row?.utensilId)));
+  // If selected movements are provided, filter to only those exact rows.
+  if (selectedMovements && selectedMovements.length > 0) {
+    const selectedSet = new Set(
+      selectedMovements.map((row) => buildMovementSelectionKey(row)).filter(Boolean)
+    );
+    submittedRows = submittedRows.filter((row) => selectedSet.has(buildMovementSelectionKey(row)));
   }
 
   if (submittedRows.length === 0) {
@@ -1121,7 +1264,7 @@ export async function submitReturnedUtensilMovements(context) {
   };
 }
 
-export async function approveReturnedUtensilMovements(context, selectedUtensilIds = null) {
+export async function approveReturnedUtensilMovements(context, selectedMovements = null) {
   await ensureUtensilMovementTables();
   const normalizedContext = normalizeMovementContext(context);
   const rows = await getUtensilMovementRows(normalizedContext);
@@ -1135,10 +1278,12 @@ export async function approveReturnedUtensilMovements(context, selectedUtensilId
       row?.itemId
   );
 
-  // If selectedUtensilIds is provided, filter to only those items
-  if (selectedUtensilIds && selectedUtensilIds.length > 0) {
-    const selectedSet = new Set(selectedUtensilIds.map(String));
-    submittedRows = submittedRows.filter((row) => selectedSet.has(String(row?.utensilId)));
+  // If selected movements are provided, filter to only those exact rows.
+  if (selectedMovements && selectedMovements.length > 0) {
+    const selectedSet = new Set(
+      selectedMovements.map((row) => buildMovementSelectionKey(row)).filter(Boolean)
+    );
+    submittedRows = submittedRows.filter((row) => selectedSet.has(buildMovementSelectionKey(row)));
   }
 
   if (submittedRows.length === 0) {
@@ -1203,20 +1348,42 @@ export async function updateReturnedQuantity(context, utensilId, itemId, newQuan
   await ensureUtensilMovementTables();
   const normalizedContext = normalizeMovementContext(context);
   const db = await getDatabase();
+  const normalizedUtensilId = String(utensilId);
+  const normalizedItemId = String(itemId);
 
   console.log('[updateReturnedQuantity] Input:', { utensilId, itemId, newQuantity });
 
-  const existingRow = await db.getFirstAsync(
-    `
-      SELECT id, returnedQuantity, syncStatus
-      FROM ${UTENSIL_MOVEMENTS_TABLE}
-      WHERE contextKey = ? AND utensilId = ? AND (itemId = ? OR despatchItemId = ?);
-    `,
-    buildContextKey(normalizedContext),
-    String(utensilId),
-    String(itemId),
-    String(itemId)
-  );
+  let existingRow;
+  
+  // If recipeId is provided, use exact contextKey match
+  // If not, use LIKE matching to find movements regardless of recipe
+  if (normalizedContext.recipeId && normalizedContext.recipeId !== 'unknown-recipe') {
+    existingRow = await db.getFirstAsync(
+      `
+        SELECT id, returnedQuantity, syncStatus
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey = ? AND utensilId = ? AND (itemId = ? OR despatchItemId = ?);
+      `,
+      [buildContextKey(normalizedContext), normalizedUtensilId, normalizedItemId, normalizedItemId]
+    );
+  } else {
+    // Query by base context (date|session|customer|trip) without recipe filter
+    const basePattern = [
+      normalizedContext.orderDate ?? 'unknown-date',
+      String(normalizedContext.sessionId ?? 'unknown-session'),
+      String(normalizedContext.customerId ?? 'unknown-customer'),
+      String(normalizeTripNo(normalizedContext.tripNo)),
+    ].join('|') + '|%';
+    
+    existingRow = await db.getFirstAsync(
+      `
+        SELECT id, returnedQuantity, syncStatus
+        FROM ${UTENSIL_MOVEMENTS_TABLE}
+        WHERE contextKey LIKE ? AND utensilId = ? AND (itemId = ? OR despatchItemId = ?);
+      `,
+      [basePattern, normalizedUtensilId, normalizedItemId, normalizedItemId]
+    );
+  }
 
   console.log('[updateReturnedQuantity] Found existing row:', existingRow);
 
@@ -1238,8 +1405,8 @@ export async function updateReturnedQuantity(context, utensilId, itemId, newQuan
         normalizedContext.sessionId,
         normalizedContext.customerId,
         normalizedContext.tripNo,
-        String(utensilId),
-        String(itemId),
+        normalizedUtensilId,
+        normalizedItemId,
         newQuantity,
         0, // isDraft = 0 (not a draft, it's a real return entry)
         SYNC_STATUS_LOCAL_ONLY,
