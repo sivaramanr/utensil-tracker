@@ -10,6 +10,7 @@
  * where stacks = [{ name, component, options }]
  */
 
+import despatchModule from '../../modules/despatch';
 import feedbackModule from '../../modules/feedback';
 import utensilModule from '../../modules/utensil';
 import wastageModule from '../../modules/wastage';
@@ -17,6 +18,7 @@ import wastageModule from '../../modules/wastage';
 const MODULE_REGISTRY = [
   utensilModule,
   wastageModule,
+  despatchModule,
   feedbackModule,
 ];
 

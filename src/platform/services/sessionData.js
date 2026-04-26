@@ -357,3 +357,22 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     comboNamesLabel: item.comboNames.join(', '),
   }));
 }
+
+export async function getSessionCustomerCombos({ orderDate, sessionId, customerId }) {
+  await ensureSessionDataTables();
+  if (!orderDate || !sessionId || !customerId) return [];
+
+  const db = await getDatabase();
+  const rows = await db.getAllAsync(
+    `SELECT comboId, COALESCE(billableItemName, name) AS displayName, totalPax
+     FROM ${SESSION_DATA_COMBOS_TABLE}
+     WHERE orderDate = ? AND sessionId = ? AND customerId = ?
+     ORDER BY sortOrder ASC, displayName ASC;`,
+    [orderDate, String(sessionId), String(customerId)]
+  );
+  return rows.map((r) => ({
+    id: String(r.comboId),
+    name: r.displayName || 'Combo',
+    totalPax: Number(r.totalPax ?? 0),
+  }));
+}

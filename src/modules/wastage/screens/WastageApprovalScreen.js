@@ -16,9 +16,10 @@ import { approveWastageEntries, getAllWastageEntries } from '../services/wastage
 const THEME = '#d97706';
 
 const STATUS_LABELS = {
-  LOCAL_ONLY: { label: 'Draft', color: '#6b7280', bg: '#f3f4f6' },
-  SUBMITTED: { label: 'Submitted', color: '#d97706', bg: '#fef3c7' },
-  APPROVED: { label: 'Approved', color: '#059669', bg: '#d1fae5' },
+  LOCAL_ONLY: { label: 'Created',   color: '#166534', bg: '#dcfce7' },
+  CHANGED:    { label: 'Changed',   color: '#1e40af', bg: '#dbeafe' },
+  SUBMITTED:  { label: 'Submitted', color: '#d97706', bg: '#fef3c7' },
+  APPROVED:   { label: 'Approved',  color: '#059669', bg: '#d1fae5' },
 };
 
 export default function WastageApprovalScreen({ navigation }) {
@@ -31,7 +32,7 @@ export default function WastageApprovalScreen({ navigation }) {
     setLoading(true);
     try {
       const all = await getAllWastageEntries();
-      setEntries(all.filter((e) => e.wastedQuantity > 0));
+      setEntries(all.filter((e) => e.wastedQuantity > 0 && e.syncStatus === 'SUBMITTED'));
     } catch (error) {
       console.error('WastageApproval load error:', error);
     } finally {
@@ -156,7 +157,7 @@ export default function WastageApprovalScreen({ navigation }) {
           keyExtractor={(item) => item.id}
           renderItem={renderEntry}
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={<Text style={styles.emptyText}>No wastage entries found.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>No entries pending approval.</Text>}
         />
       )}
 
