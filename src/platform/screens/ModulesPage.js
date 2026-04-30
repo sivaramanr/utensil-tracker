@@ -18,7 +18,7 @@ import { enabledModules } from '../config/modules';
 
 const KEYCLOAK_DOMAIN = 'amruthaauth.cookerp.com';
 const REALM = 'Amrutha';
-const CLIENT_ID = 'utracker';
+const CLIENT_ID = 'mobileapp';
 const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'utensiltracker', path: 'redirect' });
 const LOGOUT_ENDPOINT = `https://${KEYCLOAK_DOMAIN}/realms/${REALM}/protocol/openid-connect/logout`;
 

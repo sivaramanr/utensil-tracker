@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAccessToken, getWorkInfo } from '../../../core/auth';
 import { BASE_URL } from '../../../core/api/endpoints';
 import { formatIsoDateForDisplay } from '../../../core/utils/date';
@@ -32,6 +33,7 @@ export default function DCChallanScreen({ navigation, route }) {
   const [includeOrderQty, setIncludeOrderQty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     (async () => {
@@ -192,7 +194,7 @@ export default function DCChallanScreen({ navigation, route }) {
       )}
 
       {/* Download button */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <Pressable
           style={[styles.downloadBtn, downloading && styles.downloadBtnDisabled]}
           onPress={handleDownload}

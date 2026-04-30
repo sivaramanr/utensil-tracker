@@ -80,18 +80,20 @@ async function upsertServerEntries(serverList, { orderDate, sessionId, customerI
     await db.runAsync(
       `INSERT INTO ${WASTAGE_TABLE}
        (id, contextKey, orderDate, sessionId, customerId, itemId, menuPlanItemId,
-        wastedQuantity, reason, isApproved, syncStatus, serverId, syncedAt, localUpdatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        itemName, wastedQuantity, reason, isApproved, syncStatus, serverId, syncedAt, localUpdatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          wastedQuantity = excluded.wastedQuantity,
          reason = excluded.reason,
          isApproved = excluded.isApproved,
          syncStatus = excluded.syncStatus,
          serverId = excluded.serverId,
-         syncedAt = excluded.syncedAt
+         syncedAt = excluded.syncedAt,
+         itemName = COALESCE(excluded.itemName, itemName)
        WHERE syncStatus != '${SYNC_STATUS.LOCAL_ONLY}';`,
       [id, contextKey, orderDate, String(sessionId), String(customerId),
        itemId, item.menuPlanItemId ? String(item.menuPlanItemId) : null,
+       item.itemName ?? null,
        Number(item.wastedQuantity ?? 0), item.reason ?? null,
        item.isApproved ? 1 : 0,
        item.syncStatus ?? SYNC_STATUS.SUBMITTED,
@@ -101,8 +103,28 @@ async function upsertServerEntries(serverList, { orderDate, sessionId, customerI
   }
 }
 
-export async function getWastageEntries({ orderDate, sessionId, customerId }) {
+export async function getWastageEntries({ orderDate, sessionId, customerId, forceRefresh = false }) {
   await ensureWastageTable();
+  const db = await getDatabase();
+
+  if (!forceRefresh) {
+    const hit = await db.getFirstAsync(
+      `SELECT COUNT(*) AS cnt FROM ${WASTAGE_TABLE}
+       WHERE orderDate = ? AND sessionId = ? AND customerId = ?;`,
+      [orderDate, String(sessionId), String(customerId)]
+    );
+    if (Number(hit?.cnt ?? 0) > 0) {
+      const rows = await db.getAllAsync(
+        `SELECT * FROM ${WASTAGE_TABLE}
+         WHERE orderDate = ? AND sessionId = ? AND customerId = ?
+         ORDER BY itemName ASC;`,
+        [orderDate, String(sessionId), String(customerId)]
+      );
+      return rows.map(mapRow);
+    }
+  }
+
+  // No cached data or forceRefresh: sync from API
   try {
     const serverList = await fetchWastageEntriesFromApi({ orderDate, sessionId, customerId });
     if (serverList.length > 0) {
@@ -111,7 +133,6 @@ export async function getWastageEntries({ orderDate, sessionId, customerId }) {
   } catch (error) {
     console.warn('[WASTAGE] Server sync failed, using local data:', error.message);
   }
-  const db = await getDatabase();
   const rows = await db.getAllAsync(
     `SELECT * FROM ${WASTAGE_TABLE}
      WHERE orderDate = ? AND sessionId = ? AND customerId = ?
@@ -125,7 +146,21 @@ export async function getAllWastageEntries() {
   await ensureWastageTable();
   const db = await getDatabase();
   const rows = await db.getAllAsync(
-    `SELECT * FROM ${WASTAGE_TABLE} ORDER BY localUpdatedAt DESC;`
+    `SELECT w.id, w.contextKey, w.orderDate, w.sessionId, w.customerId,
+            w.itemId, w.menuPlanItemId,
+            COALESCE(w.itemName, si.name) AS itemName,
+            w.wastedQuantity, w.reason, w.isApproved, w.syncStatus,
+            w.serverId, w.syncedAt, w.localUpdatedAt
+     FROM ${WASTAGE_TABLE} w
+     LEFT JOIN (
+       SELECT itemId, orderDate, sessionId, customerId, MAX(name) AS name
+       FROM SessionDataItems
+       GROUP BY itemId, orderDate, sessionId, customerId
+     ) si ON si.itemId     = w.itemId
+         AND si.orderDate  = w.orderDate
+         AND si.sessionId  = w.sessionId
+         AND si.customerId = w.customerId
+     ORDER BY w.localUpdatedAt DESC;`
   );
   return rows.map(mapRow);
 }

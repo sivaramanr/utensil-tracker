@@ -13,6 +13,7 @@ import {
   ToastAndroid,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatIsoDateForDisplay } from '../../../core/utils/date';
 import {
   getSessionCustomerCombos,
@@ -64,6 +65,7 @@ export default function DespatchItemsScreen({ navigation, route }) {
     tripNo = 1,
   } = route.params ?? {};
 
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [combos, setCombos] = useState([]);
   const [despatchMap, setDespatchMap] = useState({});
@@ -321,7 +323,7 @@ export default function DespatchItemsScreen({ navigation, route }) {
       )}
 
       {/* DC Challan footer button */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <Pressable
           style={styles.challanBtn}
           onPress={() =>

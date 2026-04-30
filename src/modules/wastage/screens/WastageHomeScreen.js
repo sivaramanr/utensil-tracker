@@ -10,12 +10,8 @@ const THEME_BG = '#fffbeb';
 function SummaryCard({ title, value, icon, color, backgroundColor }) {
   return (
     <View style={[styles.summaryCard, { backgroundColor }]}>
-      <View style={styles.summaryCardGlow} />
-      <View style={styles.summaryTopRow}>
-        <View style={[styles.summaryIconWrap, { backgroundColor: color }]}>
-          <Ionicons name={icon} size={24} color="#fff" />
-        </View>
-        <Ionicons name="trending-up-outline" size={18} color="rgba(15, 23, 42, 0.45)" />
+      <View style={[styles.summaryIconWrap, { backgroundColor: color }]}>
+        <Ionicons name={icon} size={20} color="#fff" />
       </View>
       <Text style={styles.summaryTitle}>{title}</Text>
       <Text style={styles.summaryValue}>{value}</Text>
@@ -96,26 +92,19 @@ export default function WastageHomeScreen({ navigation }) {
                 >
                   <Ionicons name="apps-outline" size={20} color="#374151" />
                 </Pressable>
-                <Pressable
-                  onPress={() => navigation.navigate('WastageApproval')}
-                  style={styles.heroActionButton}
-                  hitSlop={10}
-                >
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#374151" />
-                </Pressable>
               </View>
             </View>
             <View style={styles.heroTitleRow}>
               <Text style={styles.heroTitle}>Wastage Tracker</Text>
             </View>
-            <View style={styles.heroMetaRow}>
+            {/* <View style={styles.heroMetaRow}>
               <View style={styles.todayChip}>
                 <Ionicons name="calendar-outline" size={14} color={THEME} />
                 <Text style={[styles.todayChipText, { color: THEME }]}>
                   {currentDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
                 </Text>
               </View>
-            </View>
+            </View> */}
           </View>
 
           <View style={styles.summarySection}>
@@ -259,24 +248,18 @@ const styles = StyleSheet.create({
   },
   todayChipText: { fontSize: 12, fontWeight: '700' },
   summarySection: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    justifyContent: 'space-between', gap: 12, marginBottom: 28,
+    flexDirection: 'column', gap: 10, marginBottom: 28,
   },
   summaryCard: {
-    width: '48%', minHeight: 150, borderRadius: 24, padding: 16,
-    overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.65)',
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14,
+    borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.65)',
   },
-  summaryCardGlow: {
-    position: 'absolute', top: -12, right: -12,
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
-  },
-  summaryTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   summaryIconWrap: {
-    width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
   },
-  summaryTitle: { marginTop: 20, fontSize: 13, fontWeight: '700', color: '#475569' },
-  summaryValue: { marginTop: 8, fontSize: 30, fontWeight: '800', color: '#0f172a' },
+  summaryTitle: { flex: 1, fontSize: 14, fontWeight: '600', color: '#475569' },
+  summaryValue: { fontSize: 22, fontWeight: '800', color: '#0f172a' },
   sectionEyebrow: {
     fontSize: 12, fontWeight: '700', letterSpacing: 0.8,
     textTransform: 'uppercase', color: '#92400e', marginBottom: 4,

@@ -7,11 +7,12 @@ export default function IncomingScreen({ route }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const customerName = route?.params?.customerName;
+  const customerCode = route?.params?.customerCode;
   const customerId = route?.params?.customerId;
   const selectedDate = route?.params?.selectedDate;
   const sessionId = route?.params?.sessionId;
   const sessionName = route?.params?.sessionName;
-  const title = customerName || 'Customer';
+  const title = customerCode || customerName || 'Customer';
   const subtitle = [formatIsoDateForDisplay(selectedDate), sessionName].filter(Boolean).join(' | ');
 
   const formatQuantity = useCallback((value) => {

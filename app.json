@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "utensil-tracker",
+    "name": "Cook ERP",
     "slug": "utensil-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,8 +19,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false,
-      "package": "com.cookerp.utracker"
+      "package": "com.cookerp.mobileapp"
     },
     "web": {
       "output": "static",

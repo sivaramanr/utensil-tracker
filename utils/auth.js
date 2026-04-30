@@ -1,15 +1,15 @@
-import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
+import * as WebBrowser from 'expo-web-browser';
+import { Alert } from 'react-native';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const ID_TOKEN_KEY = 'id_token';
 const KEYCLOAK_DOMAIN = 'amruthaauth.cookerp.com';
 const REALM = 'Amrutha';
-const CLIENT_ID = 'utracker';
+const CLIENT_ID = 'mobileapp';
 const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'utensiltracker', path: 'redirect' });
 const DISCOVERY = {
   authorizationEndpoint: `https://${KEYCLOAK_DOMAIN}/realms/${REALM}/protocol/openid-connect/auth`,

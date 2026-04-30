@@ -11,7 +11,7 @@ const WORK_INFO_KEY = 'WorkInfo';
 
 const KEYCLOAK_DOMAIN = 'amruthaauth.cookerp.com';
 const REALM = 'Amrutha';
-const CLIENT_ID = 'utracker';
+const CLIENT_ID = 'mobileapp';
 const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'utensiltracker', path: 'redirect' });
 
 const DISCOVERY = {

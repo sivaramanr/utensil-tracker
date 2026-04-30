@@ -341,6 +341,8 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
         groupName: row.groupName != null ? String(row.groupName) : null,
         recipeId: recipeId != null ? String(recipeId) : null,
         recipeName: recipeName != null ? String(recipeName) : null,
+        actualRecipeName: row.actualRecipeName != null ? String(row.actualRecipeName) : null,
+        changeRecipeName: row.changeRecipeName != null ? String(row.changeRecipeName) : null,
         comboNames: comboLabel ? [comboLabel] : [],
       });
       continue;
@@ -349,6 +351,7 @@ export async function getSessionCustomerItems({ orderDate, sessionId, customerId
     if (!existing.despatchItemId && row.menuPlanItemId != null) existing.despatchItemId = String(row.menuPlanItemId);
     if (!existing.recipeId && recipeId != null) existing.recipeId = String(recipeId);
     if (!existing.recipeName && recipeName != null) existing.recipeName = String(recipeName);
+    if (!existing.actualRecipeName && row.actualRecipeName != null) existing.actualRecipeName = String(row.actualRecipeName);
     if (comboLabel && !existing.comboNames.includes(comboLabel)) existing.comboNames.push(comboLabel);
   }
 

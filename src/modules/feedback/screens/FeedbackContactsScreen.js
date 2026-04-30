@@ -191,7 +191,7 @@ export default function FeedbackContactsScreen({ navigation, route }) {
             </View>
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroEyebrow} numberOfLines={1}>
-                {customerName || customerCode || 'Customer'}
+                {customerCode || customerName || 'Customer'}
               </Text>
               <Text style={styles.title}>Contacts</Text>
             </View>
@@ -239,7 +239,7 @@ export default function FeedbackContactsScreen({ navigation, route }) {
               <View style={styles.customerQrTextWrap}>
                 <Text style={styles.customerQrLabel}>Customer QR Code</Text>
                 <Text style={styles.customerQrName} numberOfLines={1}>
-                  {customerName || customerCode || 'Customer'}
+                  {customerCode || customerName || 'Customer'}
                 </Text>
                 <Text style={styles.customerQrCaption}>No contact details in URL</Text>
               </View>

@@ -112,8 +112,15 @@ async function readCache({ despatchDate, sessionId, customerId, tripNo }) {
   }));
 }
 
-export async function getDespatchItems({ despatchDate, sessionId, customerId, tripNo = 1 }) {
+export async function getDespatchItems({ despatchDate, sessionId, customerId, tripNo = 1, forceRefresh = false }) {
   await ensureDespatchTable();
+
+  if (!forceRefresh) {
+    const cached = await readCache({ despatchDate, sessionId, customerId, tripNo });
+    if (cached.length > 0) return cached;
+  }
+
+  // No cached data or forceRefresh: fetch from API
   try {
     const { unitId, data } = await fetchFromApi({ despatchDate, sessionId, customerId, tripNo });
     if (Object.keys(data).length > 0) {
