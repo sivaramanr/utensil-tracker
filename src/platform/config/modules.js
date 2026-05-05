@@ -12,6 +12,7 @@
 
 import despatchModule from '../../modules/despatch';
 import feedbackModule from '../../modules/feedback';
+import stocksModule from '../../modules/stocks';
 import utensilModule from '../../modules/utensil';
 import wastageModule from '../../modules/wastage';
 
@@ -20,6 +21,7 @@ const MODULE_REGISTRY = [
   wastageModule,
   despatchModule,
   feedbackModule,
+  stocksModule,
 ];
 
 export const enabledModules = MODULE_REGISTRY.filter((m) => m.enabled !== false);
